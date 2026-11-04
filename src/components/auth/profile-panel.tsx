@@ -1,0 +1,13 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import { Check, UserRound } from "lucide-react";
+import { validateDisplayName } from "@/lib/profile";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+
+export default function ProfilePanel({ email, initialName, onSaved }: { email: string; initialName: string | null; onSaved: (name: string) => void }) {
+  const [name, setName] = useState(initialName || ""); const [savedName, setSavedName] = useState(initialName || ""); const [busy, setBusy] = useState(false); const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  const unchanged = name.trim() === savedName;
+  const save = async (event: FormEvent) => { event.preventDefault(); const nextName = validateDisplayName(name); setMessage(""); setError(""); if (!nextName) { setError("Enter a display name between 1 and 120 characters."); return; } if (nextName === savedName) return; setBusy(true); try { const supabase = createSupabaseBrowserClient(); const { data: { user }, error: userError } = await supabase.auth.getUser(); if (userError || !user) throw userError || new Error("Your session has expired."); const { error: updateError } = await supabase.from("profiles").update({ display_name: nextName }).eq("id", user.id); if (updateError) throw updateError; setName(nextName); setSavedName(nextName); onSaved(nextName); setMessage("Display name saved."); } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save your display name."); } finally { setBusy(false); } };
+  return <section className="panel settings-panel profile-panel"><div className="settings-heading"><div><p className="section-kicker">Profile</p><h3>Your information</h3><span className="panel-subtitle">How your name appears to household members.</span></div><span className="household-heading-icon" aria-hidden="true"><UserRound size={18} /></span></div><form className="profile-form" onSubmit={save}><label className="auth-field">Display name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} autoComplete="nickname" placeholder="Your name" /></label><div className="profile-email"><span className="profile-email-label">Email address</span><strong className="profile-email-value">{email}</strong></div><div className="profile-actions"><button className="button button-primary" disabled={busy || unchanged}>{busy ? "Saving..." : "Save changes"}</button>{message && <p className="auth-message" role="status"><Check size={14} /> {message}</p>}</div>{error && <p className="auth-error profile-feedback" role="alert">{error}</p>}</form></section>;
+}
