@@ -26,9 +26,12 @@ export const viewport: Viewport = {
   themeColor: "#2479ED",
 };
 
+const themeInitializer = `try { var theme = localStorage.getItem("casakeeper-theme"); if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme; } catch (error) {}`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeInitializer }} /></head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

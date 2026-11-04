@@ -15,6 +15,8 @@
     "test:resources": "node --experimental-strip-types --test src/lib/resources.test.ts src/lib/resource-storage.test.ts",
     "test:process-steps": "node --experimental-strip-types --test src/lib/process-steps.test.ts",
     "test:routine-completions": "node --experimental-strip-types --test src/lib/routine-completions.test.ts",
+    "test:listing": "node --experimental-strip-types --test src/lib/listing.test.ts",
+    "test:theme": "node --experimental-strip-types --test src/lib/theme.test.ts",
     "test:security": "node --experimental-strip-types --import ./supabase/tests/load-env.ts --test supabase/tests/household-security.test.ts",
     "test:security:config": "node --experimental-strip-types --import ./supabase/tests/load-env.ts supabase/tests/config-check.ts",
     "test:security:verify-cleanup": "node --experimental-strip-types --import ./supabase/tests/load-env.ts supabase/tests/verify-security-cleanup.ts",
