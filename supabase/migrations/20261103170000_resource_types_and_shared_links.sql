@@ -39,20 +39,30 @@ create trigger households_seed_resource_types after insert on public.households
 for each row execute function public.seed_default_resource_types();
 
 alter table public.resources add column if not exists resource_type_id uuid;
+alter table public.resources add column if not exists attachment_operation_id uuid;
+alter table public.resources add column if not exists attachment_pending boolean not null default false;
 update public.resources r
 set resource_type_id = t.id
 from public.resource_types t
 where t.household_id = r.household_id and lower(trim(t.name)) = 'other' and r.resource_type_id is null;
 
-alter table public.resources alter column resource_type_id set not null;
 alter table public.resources drop constraint if exists resources_resource_type_id_fkey;
 alter table public.resources add constraint resources_resource_type_id_fkey
   foreign key (resource_type_id) references public.resource_types(id) on delete restrict;
 create index if not exists resources_type_idx on public.resources (household_id, resource_type_id);
+create unique index if not exists resources_attachment_operation_idx
+  on public.resources (household_id, attachment_operation_id)
+  where attachment_operation_id is not null;
+create index if not exists resources_attachment_pending_idx
+  on public.resources (attachment_pending, created_at)
+  where attachment_pending;
 
 create or replace function public.validate_resource_type_household()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
+  if new.resource_type_id is null then
+    return new;
+  end if;
   if not exists (
     select 1 from public.resource_types
     where id = new.resource_type_id and household_id = new.household_id

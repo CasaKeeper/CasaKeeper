@@ -6,7 +6,8 @@ export type ResourceRow = {
   description: string;
   links: string[];
   notes: string;
-  resource_type_id: string;
+  resource_type_id: string | null;
+  attachment_pending: boolean;
 };
 
 export type ResourceTypeRow = { id: string; name: string; household_id: string };
@@ -25,7 +26,7 @@ export type ResourceLinkRow = { id: string; resource_id: string; parent_type: "t
 
 export async function loadHouseholdResources(supabase: SupabaseClient) {
   const [resourcesResult, typesResult] = await Promise.all([
-    supabase.from("resources").select("id, title, description, links, notes, resource_type_id").order("created_at", { ascending: false }),
+    supabase.from("resources").select("id, title, description, links, notes, resource_type_id, attachment_pending").eq("attachment_pending", false).order("created_at", { ascending: false }),
     supabase.from("resource_types").select("id, name, household_id").order("name"),
   ]);
   if (resourcesResult.error || typesResult.error) return { resources: [] as ResourceRow[], resourceTypes: [] as ResourceTypeRow[], attachments: [] as ResourceAttachmentRow[], links: [] as ResourceLinkRow[], error: resourcesResult.error || typesResult.error };

@@ -31,7 +31,7 @@ import { getBrowserStorage, readStoredTheme, writeStoredTheme, type Theme } from
 type Section = "home" | "tasks" | "routines" | "wishlist" | "resources" | "account";
 type ModalKind = "task" | "routine" | "wishlist" | "resource" | null;
 type MediaKind = "image" | "video" | "document";
-type MediaAttachment = { id: string; name: string; type: string; size: number; kind?: MediaKind; previewUrl?: string; storagePath?: string; resourceId?: string; resourceLinkId?: string; resourceTypeId?: string; file?: File };
+type MediaAttachment = { id: string; name: string; type: string; size: number; kind?: MediaKind; previewUrl?: string; storagePath?: string; resourceId?: string; resourceLinkId?: string; resourceTypeId?: string; operationId?: string; file?: File };
 type Task = { id: string; title: string; description: string; due?: string; scheduledDate?: string | null; process: ProcessStep[]; links: string[]; media: MediaAttachment[]; blockers: string[]; notes: string; completed: boolean };
 type RoutineCompletion = { scheduledDate: string; completed: boolean; completedAt: string | null; processSteps: Record<string, boolean> };
 type Routine = { id: string; title: string; description: string; process: string[]; processSteps?: ProcessStep[]; links: string[]; media: MediaAttachment[]; blockers: string[]; notes: string; startDate: string; frequencyConfig: RoutineFrequency | null; endCondition: RoutineEndCondition; completedDates: Record<string, boolean>; completedAt?: Record<string, string | null>; occurrenceProcess?: Record<string, Record<string, boolean>>; completionHistory?: RoutineCompletion[] };
@@ -48,7 +48,7 @@ const navItems = [
   { key: "wishlist" as Section, label: "Wishlist", href: "/wishlist", icon: ShoppingBag },
   { key: "resources" as Section, label: "Resources", href: "/resources", icon: Folder },
 ];
-function createMediaAttachments(files: File[], validator = isSupportedMedia): MediaAttachment[] { return files.filter((file) => validator(file.name, file.type)).map((file) => ({ id: `${file.name}-${file.lastModified}-${Math.random()}`, name: file.name, type: file.type || mediaExtension(file.name).toUpperCase(), size: file.size, kind: mediaKind(file.name, file.type), previewUrl: URL.createObjectURL(file), file })); }
+function createMediaAttachments(files: File[], validator = isSupportedMedia): MediaAttachment[] { return files.filter((file) => validator(file.name, file.type)).map((file) => ({ id: `${file.name}-${file.lastModified}-${Math.random()}`, name: file.name, type: file.type || mediaExtension(file.name).toUpperCase(), size: file.size, kind: mediaKind(file.name, file.type), previewUrl: URL.createObjectURL(file), operationId: crypto.randomUUID(), file })); }
 function pageTitle(section: Section) { return { home: "Home", tasks: "Tasks", routines: "Routines", wishlist: "Wishlist", resources: "Resources", account: "Account" }[section]; }
 
 export default function CasaKeeperApp({ accountEmail, household, householdId, initialTasks, initialRoutines, initialWishlist, initialResources, initialResourceTypes, taskLoadError, routineLoadError, wishlistLoadError, resourceLoadError }: { accountEmail?: string; household?: HouseholdContext; householdId?: string; initialTasks?: Task[]; initialRoutines?: Routine[]; initialWishlist?: WishlistItem[]; initialResources?: Resource[]; initialResourceTypes?: ResourceType[]; taskLoadError?: string; routineLoadError?: string; wishlistLoadError?: string; resourceLoadError?: string } = {}) {
@@ -185,24 +185,29 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
     for (const file of pendingFiles) {
       const typeId = file.resourceTypeId as string;
       const supabase = createSupabaseBrowserClient();
-      const { data: resource, error: resourceError } = await supabase.from("resources").insert({ household_id: householdId, title: `${parentTitle} — ${file.name}`, description: `Attachment from ${parentType}.`, resource_type_id: typeId, links: [], notes: "" }).select("id").single();
-      if (resourceError || !resource) throw resourceError || new Error("Unable to create the attachment Resource.");
-      let uploaded: MediaAttachment[];
-      try {
-        uploaded = await uploadResourceFiles(String(resource.id), [file]);
-      } catch (cause) {
-        await fetch(`/api/resources/${encodeURIComponent(String(resource.id))}`, { method: "DELETE" }).catch(() => undefined);
-        throw cause;
+      const operationId = file.operationId || crypto.randomUUID();
+      let { data: resource } = await supabase.from("resources").select("id, resource_type_id, attachment_pending").eq("household_id", householdId).eq("attachment_operation_id", operationId).maybeSingle();
+      if (resource && resource.resource_type_id !== typeId) throw new Error(`The saved Resource Type for ${file.name} does not match this retry.`);
+      if (!resource) {
+        const inserted = await supabase.from("resources").insert({ household_id: householdId, title: `${parentTitle} — ${file.name}`, description: `Attachment from ${parentType}.`, resource_type_id: typeId, attachment_operation_id: operationId, attachment_pending: true, links: [], notes: "" }).select("id, resource_type_id, attachment_pending").single();
+        if (inserted.error || !inserted.data) {
+          const recovered = await supabase.from("resources").select("id, resource_type_id, attachment_pending").eq("household_id", householdId).eq("attachment_operation_id", operationId).maybeSingle();
+          if (recovered.error || !recovered.data) throw inserted.error || new Error("Unable to create the attachment Resource.");
+          resource = recovered.data;
+        } else resource = inserted.data;
       }
+      const existingAttachments = await fetch(`/api/resources/${encodeURIComponent(String(resource.id))}/attachments`).then(async (response) => response.ok ? (await response.json()).attachments || [] : []).catch(() => []);
+      const uploaded: MediaAttachment[] = existingAttachments.length ? existingAttachments.map((attachment: { id: string; original_filename: string; mime_type: string; file_size: number; storage_path: string; signedUrl?: string }) => ({ id: attachment.id, name: attachment.original_filename, type: attachment.mime_type, size: attachment.file_size, storagePath: attachment.storage_path, previewUrl: attachment.signedUrl, resourceId: String(resource.id), operationId })) : await uploadResourceFiles(String(resource.id), [file]);
       const attachment = uploaded[0];
       if (!attachment) throw new Error("The attachment upload did not complete.");
-      const { data: link, error: linkError } = await supabase.from("resource_links").insert({ household_id: householdId, resource_id: resource.id, parent_type: parentType, parent_id: parentId }).select("id").single();
+      const { data: link, error: linkError } = await supabase.from("resource_links").upsert({ household_id: householdId, resource_id: resource.id, parent_type: parentType, parent_id: parentId }, { onConflict: "resource_id,parent_type,parent_id" }).select("id").single();
       if (linkError || !link) {
-        await fetch(`/api/resources/${encodeURIComponent(String(resource.id))}`, { method: "DELETE" }).catch(() => undefined);
         throw new Error("The file was saved as a Resource, but could not be linked.");
       }
-      setResources((items) => [{ id: resource.id, title: `${parentTitle} — ${file.name}`, description: `Attachment from ${parentType}.`, resourceTypeId: typeId, resourceTypeName: resourceTypes.find((type) => type.id === typeId)?.name, links: [], notes: [], attachments: [attachment] }, ...items]);
-      linked.push({ ...attachment, resourceId: String(resource.id), resourceLinkId: link.id });
+      const { error: publishError } = await supabase.from("resources").update({ attachment_pending: false }).eq("id", resource.id).eq("household_id", householdId);
+      if (publishError) throw new Error("The attachment was linked, but the Resource could not be published yet. Retry the save.");
+      setResources((items) => items.some((item) => item.id === resource.id) ? items : [{ id: resource.id, title: `${parentTitle} — ${file.name}`, description: `Attachment from ${parentType}.`, resourceTypeId: typeId, resourceTypeName: resourceTypes.find((type) => type.id === typeId)?.name, links: [], notes: [], attachments: [attachment] }, ...items]);
+      linked.push({ ...attachment, resourceId: String(resource.id), resourceLinkId: link.id, operationId });
     }
     return linked;
   };
