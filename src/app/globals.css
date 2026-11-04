@@ -214,6 +214,7 @@ html[data-theme="dark"] .blocker-modal-icon { background: #4a3816; }
 .modal-card { position: relative; }
 .detail-delete-backdrop { position: fixed; inset: 0; z-index: var(--z-modal); border-radius: 0; }
 .routine-view-switch,.calendar-mode-switch { width: fit-content; display: inline-flex; align-self: center; gap: 5px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); }
+.routine-view-switch { display: none; }
 .routine-view-switch button,.calendar-mode-switch button { border: 0; border-radius: 999px; min-height: 34px; padding: 0 18px; color: var(--ink); background: transparent; font-size: 12px; font-weight: 700; }
 .routine-view-switch button.selected,.calendar-mode-switch button.selected { color: white; background: var(--blue); }
 .routine-view-switch button:focus-visible,.calendar-mode-switch button:focus-visible,.calendar-day-number:focus-visible,.calendar-day-select:focus-visible,.calendar-event:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 28%, transparent); outline-offset: 2px; }
@@ -248,6 +249,19 @@ html[data-theme="dark"] .calendar-completed-indicator { color: #8ee0aa; }
 .calendar-legend-dot.task { background: var(--rose); }
 .calendar-overflow-count { color: var(--muted); font-size: 10px; font-weight: 800; }
 .home-calendar-panel { min-width: 0; }
+.home-dashboard { display: flex; flex-direction: column; }
+.home-dashboard .welcome-row { order: 0; }
+.home-dashboard .home-calendar-panel { order: 1; }
+.home-dashboard .stat-grid, .home-dashboard .dashboard-grid, .home-dashboard .quick-links { order: 2; }
+.home-dashboard .demo-note { order: 3; }
+.resource-type-filter { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 800; }
+.resource-type-filter select { min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.resource-type-label,.resource-detail-type { color: var(--muted); font-size: 11px; font-weight: 700; }
+.resource-type-create,.resource-type-row { display: flex; align-items: center; gap: 8px; }
+.resource-type-create input,.resource-type-row input { flex: 1; min-width: 0; }
+.resource-type-list { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; }
+.resource-type-row { justify-content: space-between; min-height: 38px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.resource-type-row > span { min-width: 0; overflow-wrap: anywhere; }
 .task-detail-with-date { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .task-detail-date { margin: 0; }
 .calendar-event-overdue { color: var(--rose); background: var(--rose-soft); border-color: color-mix(in srgb, var(--rose) 28%, var(--line)); }
