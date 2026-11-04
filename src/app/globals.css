@@ -237,6 +237,19 @@ html[data-theme="dark"] .calendar-event-row.calendar-event-completed { color: #8
 html[data-theme="dark"] .calendar-completed-indicator { color: #8ee0aa; }
 .calendar-quick-error { margin: 0; color: var(--rose); font-size: 12px; }
 .calendar-event span { min-width: 0; }
+.calendar-event-copy { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.calendar-event-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-event-copy small { color: currentColor; font-size: 9px; font-weight: 700; opacity: .72; }
+.calendar-task-indicator { flex: 0 0 auto; color: var(--blue); font-size: 10px; font-weight: 800; }
+.calendar-legend { display: flex; justify-content: flex-end; gap: 12px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.calendar-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.calendar-legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.calendar-legend-dot.routine { background: var(--blue); }
+.calendar-legend-dot.task { background: var(--rose); }
+.calendar-overflow-count { color: var(--muted); font-size: 10px; font-weight: 800; }
+.home-calendar-panel { min-width: 0; }
+.task-detail-with-date { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.task-detail-date { margin: 0; }
 .calendar-event-overdue { color: var(--rose); background: var(--rose-soft); border-color: color-mix(in srgb, var(--rose) 28%, var(--line)); }
 .calendar-event-upcoming { color: var(--blue); background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 28%, var(--line)); }
 .calendar-event-completed { color: #23824b; background: #e8f6ed; border-color: #b9e1c7; }
