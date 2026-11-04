@@ -6,12 +6,28 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:routines": "node --experimental-strip-types --test src/lib/routines.test.ts",
+    "test:auth": "node --experimental-strip-types --test src/lib/auth/auth.test.ts",
+    "test:household": "node --experimental-strip-types --test src/lib/household.test.ts",
+    "test:profile": "node --experimental-strip-types --test src/lib/profile.test.ts",
+    "test:tasks": "node --experimental-strip-types --test src/lib/tasks.test.ts",
+    "test:resources": "node --experimental-strip-types --test src/lib/resources.test.ts src/lib/resource-storage.test.ts",
+    "test:process-steps": "node --experimental-strip-types --test src/lib/process-steps.test.ts",
+    "test:routine-completions": "node --experimental-strip-types --test src/lib/routine-completions.test.ts",
+    "test:security": "node --experimental-strip-types --import ./supabase/tests/load-env.ts --test supabase/tests/household-security.test.ts",
+    "test:security:config": "node --experimental-strip-types --import ./supabase/tests/load-env.ts supabase/tests/config-check.ts",
+    "test:security:verify-cleanup": "node --experimental-strip-types --import ./supabase/tests/load-env.ts supabase/tests/verify-security-cleanup.ts",
+    "test:security:cleanup": "node --experimental-strip-types --import ./supabase/tests/load-env.ts supabase/tests/cleanup-security-run.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.118.0",
+    "lucide-react": "^1.66.0",
     "next": "16.4.4",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
