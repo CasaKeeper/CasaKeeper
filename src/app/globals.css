@@ -379,4 +379,21 @@ html[data-theme="dark"] .calendar-event-bar.calendar-event-completed { backgroun
 .resource-attachment-copy { min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 9px 10px 10px; }
 .resource-attachment-copy strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .resource-attachment-copy small { color: var(--muted); font-size: 10px; line-height: 1.2; text-transform: uppercase; }
+.resource-attachment-link { appearance: none; font: inherit; text-align: left; cursor: pointer; }
+.media-item-button { width: 100%; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.media-item-button:disabled { cursor: default; }
+.attachment-viewer-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); background: rgba(15,28,48,.68); }
+.attachment-viewer { width: min(100%, 900px); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 70px rgba(0,0,0,.3); }
+.attachment-viewer-header, .attachment-viewer-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; flex: 0 0 auto; }
+.attachment-viewer-header { border-bottom: 1px solid var(--line); }
+.attachment-viewer-header h2 { min-width: 0; margin: 3px 0 0; overflow-wrap: anywhere; font-size: 16px; }
+.attachment-viewer-body { min-height: 0; flex: 1 1 auto; display: grid; place-items: center; overflow: auto; padding: 16px; background: var(--surface-soft); }
+.attachment-viewer-body img { display: block; width: auto; max-width: 100%; max-height: min(68vh, 680px); object-fit: contain; }
+.attachment-viewer-body video, .attachment-viewer-body iframe { display: block; width: min(100%, 820px); height: min(68vh, 680px); border: 0; background: #0f1c30; }
+.attachment-viewer-fallback { display: grid; place-items: center; gap: 12px; min-height: 180px; color: var(--muted); text-align: center; }
+.attachment-viewer-fallback p { margin: 0; }
+.attachment-viewer-footer { border-top: 1px solid var(--line); }
+.attachment-viewer-type { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.attachment-viewer-footer > div { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 600px) { .attachment-viewer-backdrop { padding: 0; align-items: stretch; } .attachment-viewer { width: 100%; max-height: none; height: 100%; border: 0; border-radius: 0; } .attachment-viewer-body { padding: 12px; } .attachment-viewer-body img, .attachment-viewer-body video, .attachment-viewer-body iframe { max-height: 74vh; height: 74vh; } .attachment-viewer-footer { align-items: flex-start; flex-direction: column; } .attachment-viewer-footer > div { width: 100%; } .attachment-viewer-footer .button { flex: 1; justify-content: center; } }
 @media (max-width: 480px) { .resource-attachment-grid { gap: 8px; } .resource-detail-actions { justify-content: stretch; } .resource-detail-actions .button { flex: 1; } }
