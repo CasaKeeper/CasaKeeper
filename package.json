@@ -12,7 +12,7 @@
     "test:household": "node --experimental-strip-types --test src/lib/household.test.ts",
     "test:profile": "node --experimental-strip-types --test src/lib/profile.test.ts",
     "test:tasks": "node --experimental-strip-types --test src/lib/tasks.test.ts",
-    "test:resources": "node --experimental-strip-types --test src/lib/resources.test.ts src/lib/resource-storage.test.ts src/lib/resource-types.test.ts src/lib/resource-attachments.test.ts",
+    "test:resources": "node --experimental-strip-types --test src/lib/resources.test.ts src/lib/resource-storage.test.ts src/lib/resource-types.test.ts src/lib/resource-attachments.test.ts src/lib/attachment-viewer.test.ts",
     "test:process-steps": "node --experimental-strip-types --test src/lib/process-steps.test.ts",
     "test:routine-completions": "node --experimental-strip-types --test src/lib/routine-completions.test.ts",
     "test:listing": "node --experimental-strip-types --test src/lib/listing.test.ts",
