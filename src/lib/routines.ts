@@ -44,6 +44,7 @@ export type RoutineFormValues<Media = unknown> = {
   blockers: string[];
   notes: string;
   startDate: string;
+  scheduledTime?: string | null;
   frequencyConfig: RoutineFrequency;
   endCondition?: RoutineEndCondition;
 };

@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Check, CheckCircle2, ClipboardCheck, Clock3 } from "lucide-react";
 import { calendarPeriodRange, dateKey, formatDate, generateOccurrencesInRange, occurrenceStatus, parseCalendarMode, shiftDateKey, weekdays, type CalendarMode, type RoutineFrequency, type RoutineEndCondition } from "@/lib/routines";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { compareLocalTimes, formatLocalTime } from "@/lib/local-time";
 
-export type CalendarTask = { id: string; title: string; scheduledDate?: string | null; completed: boolean };
-export type CalendarRoutine = { id: string; title: string; startDate: string; frequencyConfig: RoutineFrequency | null; endCondition: RoutineEndCondition; completedDates: Record<string, boolean>; completionHistory?: { scheduledDate: string; completed: boolean }[] };
+export type CalendarTask = { id: string; title: string; scheduledDate?: string | null; scheduledTime?: string | null; completed: boolean };
+export type CalendarRoutine = { id: string; title: string; startDate: string; scheduledTime?: string | null; frequencyConfig: RoutineFrequency | null; endCondition: RoutineEndCondition; completedDates: Record<string, boolean>; completionHistory?: { scheduledDate: string; completed: boolean }[] };
 type CalendarEvent =
-  | { type: "task"; task: CalendarTask; scheduledDate: string; completed: boolean; status: "overdue" | "upcoming" | "completed" }
-  | { type: "routine"; routine: CalendarRoutine; scheduledDate: string; completed: boolean; status: "overdue" | "upcoming" | "completed" };
+  | { type: "task"; task: CalendarTask; scheduledDate: string; scheduledTime?: string | null; completed: boolean; status: "overdue" | "upcoming" | "completed" }
+  | { type: "routine"; routine: CalendarRoutine; scheduledDate: string; scheduledTime?: string | null; completed: boolean; status: "overdue" | "upcoming" | "completed" };
 
 function eventKey(event: CalendarEvent) { return `${event.type}:${event.type === "task" ? event.task.id : event.routine.id}:${event.scheduledDate}`; }
 
@@ -22,34 +22,27 @@ export default function SharedCalendarView({ tasks, routines, today, storageKey 
   const [preferenceLoaded, setPreferenceLoaded] = useState(false);
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
-  const [loadedTasks, setLoadedTasks] = useState<CalendarTask[]>(tasks);
+  const loadedTasks = tasks;
   const canCompleteRoutine = Boolean(onCompleteRoutine && storageKey !== "casakeeper-home-calendar-mode");
-  useEffect(() => {
-    let cancelled = false;
-    createSupabaseBrowserClient().from("tasks").select("id, title, scheduled_date, completed").then(({ data }) => {
-      if (!cancelled) setLoadedTasks((data || []).map((task) => ({ id: task.id as string, title: task.title as string, scheduledDate: task.scheduled_date as string | null, completed: Boolean(task.completed) })));
-    }, () => undefined);
-    return () => { cancelled = true; };
-  }, [tasks]);
   useEffect(() => { const timer = window.setTimeout(() => { const saved = window.localStorage.getItem(storageKey); setMode(parseCalendarMode(saved)); const current = dateKey(); setAnchor(current); setSelectedDate(current); setPreferenceLoaded(true); }, 0); return () => window.clearTimeout(timer); }, [storageKey]);
   useEffect(() => { if (preferenceLoaded) window.localStorage.setItem(storageKey, mode); }, [mode, preferenceLoaded, storageKey]);
   const range = calendarPeriodRange(mode, anchor);
   const visibleSelectedDate = selectedDate >= range.start && selectedDate <= range.end ? selectedDate : range.start;
   const events: CalendarEvent[] = (() => {
-    const taskEvents: CalendarEvent[] = loadedTasks.flatMap((task) => task.scheduledDate && task.scheduledDate >= range.start && task.scheduledDate <= range.end ? [{ type: "task" as const, task, scheduledDate: task.scheduledDate, completed: task.completed, status: occurrenceStatus(task.scheduledDate, today, task.completed) }] : []);
+    const taskEvents: CalendarEvent[] = loadedTasks.flatMap((task) => task.scheduledDate && task.scheduledDate >= range.start && task.scheduledDate <= range.end ? [{ type: "task" as const, task, scheduledDate: task.scheduledDate, scheduledTime: task.scheduledTime, completed: task.completed, status: occurrenceStatus(task.scheduledDate, today, task.completed) }] : []);
     const routineEvents: CalendarEvent[] = routines.flatMap((routine) => {
       const schedule = { id: routine.id, startDate: routine.startDate, frequency: routine.frequencyConfig, endCondition: routine.endCondition, completedDates: routine.completedDates };
       const byDate = new Map(generateOccurrencesInRange(schedule, range.start, range.end).map((occurrence) => [occurrence.scheduledDate, occurrence]));
       (routine.completionHistory || []).filter((record) => record.scheduledDate >= range.start && record.scheduledDate <= range.end).forEach((record) => byDate.set(record.scheduledDate, { id: `${routine.id}-${record.scheduledDate}`, routineId: routine.id, scheduledDate: record.scheduledDate, completed: record.completed }));
-      return [...byDate.values()].map((occurrence) => ({ type: "routine" as const, routine, scheduledDate: occurrence.scheduledDate, completed: occurrence.completed, status: occurrenceStatus(occurrence.scheduledDate, today, occurrence.completed) }));
+      return [...byDate.values()].map((occurrence) => ({ type: "routine" as const, routine, scheduledDate: occurrence.scheduledDate, scheduledTime: routine.scheduledTime, completed: occurrence.completed, status: occurrenceStatus(occurrence.scheduledDate, today, occurrence.completed) }));
     });
-    return [...taskEvents, ...routineEvents].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate) || a.type.localeCompare(b.type) || (a.type === "task" ? a.task.title : a.routine.title).localeCompare(b.type === "task" ? b.task.title : b.routine.title));
+    return [...taskEvents, ...routineEvents].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate) || compareLocalTimes(a.scheduledTime, b.scheduledTime) || a.type.localeCompare(b.type) || (a.type === "task" ? a.task.title : a.routine.title).localeCompare(b.type === "task" ? b.task.title : b.routine.title));
   })();
   const eventsByDate = new Map<string, CalendarEvent[]>();
   events.forEach((event) => eventsByDate.set(event.scheduledDate, [...(eventsByDate.get(event.scheduledDate) || []), event]));
   const move = (amount: number) => { if (mode === "month") { const date = new Date(`${anchor}T00:00:00`); setAnchor(dateKey(new Date(date.getFullYear(), date.getMonth() + amount, 1))); } else setAnchor(shiftDateKey(anchor, mode === "week" ? amount * 7 : amount)); };
   const complete = async (event: CalendarEvent) => { if (event.type !== "routine" || event.completed || !onCompleteRoutine || !canCompleteRoutine) return; const key = eventKey(event); if (pending[key]) return; setPending((current) => ({ ...current, [key]: true })); setError(""); try { if (!(await onCompleteRoutine(event.routine.id, event.scheduledDate))) setError("Unable to complete this occurrence."); } finally { setPending((current) => ({ ...current, [key]: false })); } };
-  const eventRow = (event: CalendarEvent) => { const title = event.type === "task" ? event.task.title : event.routine.title; const key = eventKey(event); const open = event.type === "task" ? onOpenTask || ((id: string) => router.push(`/tasks?task=${encodeURIComponent(id)}`)) : onOpenRoutine || ((id: string) => router.push(`/routines?routine=${encodeURIComponent(id)}`)); return <div key={key} className={`calendar-event-row calendar-event-${event.status}`}><button type="button" className="calendar-event" onClick={() => open(event.type === "task" ? event.task.id : event.routine.id)} aria-label={`Open ${event.type} ${title}, ${formatDate(event.scheduledDate)}, ${event.status}`}>{event.type === "task" ? <ClipboardCheck size={13} /> : event.status === "completed" ? <CheckCircle2 size={13} /> : event.status === "overdue" ? <AlertCircle size={13} /> : <Clock3 size={13} />}<span className="calendar-event-copy"><strong>{title}</strong><small>{event.type === "task" ? "Task" : "Routine"}</small></span></button>{event.completed ? <span className="calendar-completed-indicator"><CheckCircle2 size={13} /> Completed</span> : event.type === "routine" && canCompleteRoutine ? <button type="button" className="calendar-quick-complete" onClick={(clickEvent) => { clickEvent.stopPropagation(); void complete(event); }} disabled={Boolean(pending[key])} aria-label={`Quick complete ${title} on ${formatDate(event.scheduledDate)}`}>{pending[key] ? "Saving…" : <><Check size={13} /> Complete</>}</button> : <span className="calendar-task-indicator">Task</span>}</div>; };
+  const eventRow = (event: CalendarEvent) => { const title = event.type === "task" ? event.task.title : event.routine.title; const key = eventKey(event); const open = event.type === "task" ? onOpenTask || ((id: string) => router.push(`/tasks?task=${encodeURIComponent(id)}`)) : onOpenRoutine || ((id: string) => router.push(`/routines?routine=${encodeURIComponent(id)}`)); return <div key={key} className={`calendar-event-row calendar-event-${event.status}`}><button type="button" className="calendar-event" onClick={() => open(event.type === "task" ? event.task.id : event.routine.id)} aria-label={`Open ${event.type} ${title}, ${formatDate(event.scheduledDate)}, ${event.status}`}>{event.type === "task" ? <ClipboardCheck size={13} /> : event.status === "completed" ? <CheckCircle2 size={13} /> : event.status === "overdue" ? <AlertCircle size={13} /> : <Clock3 size={13} />}<span className="calendar-event-copy"><strong>{title}</strong><small>{event.type === "task" ? "Task" : "Routine"} · {formatLocalTime(event.scheduledTime) || "All day"}</small></span></button>{event.completed ? <span className="calendar-completed-indicator"><CheckCircle2 size={13} /> Completed</span> : event.type === "routine" && canCompleteRoutine ? <button type="button" className="calendar-quick-complete" onClick={(clickEvent) => { clickEvent.stopPropagation(); void complete(event); }} disabled={Boolean(pending[key])} aria-label={`Quick complete ${title} on ${formatDate(event.scheduledDate)}`}>{pending[key] ? "Saving…" : <><Check size={13} /> Complete</>}</button> : <span className="calendar-task-indicator">Task</span>}</div>; };
   const eventBar = (event: CalendarEvent) => <span key={eventKey(event)} className={`calendar-event-bar calendar-event-${event.status}`} role="img" aria-label={`${event.type === "task" ? "Task" : "Routine"}: ${event.type === "task" ? event.task.title : event.routine.title}, ${event.status}`} />;
   const dayEvents = eventsByDate.get(visibleSelectedDate) || [];
   const monthStart = new Date(`${range.start}T00:00:00`).getDay();

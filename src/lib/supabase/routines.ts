@@ -7,6 +7,7 @@ export type RoutineRow = {
   title: string;
   description: string;
   start_date: string;
+  scheduled_time: string | null;
   frequency_config: RoutineFrequency | null;
   end_condition: RoutineEndCondition | null;
   process_steps: unknown;
@@ -23,7 +24,7 @@ export type RoutineCompletionRow = {
 };
 
 export async function loadHouseholdRoutines(supabase: SupabaseClient) {
-  const routinesResult = await supabase.from("routines").select("id, title, description, start_date, frequency_config, end_condition, process_steps, links, notes").order("created_at", { ascending: false });
+  const routinesResult = await supabase.from("routines").select("id, title, description, start_date, scheduled_time, frequency_config, end_condition, process_steps, links, notes").order("created_at", { ascending: false });
   if (routinesResult.error) return { routines: [] as RoutineRow[], completions: [] as RoutineCompletionRow[], error: routinesResult.error };
   const ids = (routinesResult.data || []).map((routine) => routine.id);
   if (!ids.length) return { routines: (routinesResult.data || []) as RoutineRow[], completions: [] as RoutineCompletionRow[], error: null };
