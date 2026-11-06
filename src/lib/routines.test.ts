@@ -99,7 +99,7 @@ test("preserves history, respects the start date, and avoids duplicates", () => 
 });
 
 test("preserves routine fields and completion history across create and edit values", () => {
-  const values: RoutineFormValues<{ name: string }> = { title: "Water plants", description: "Deep water", process: ["Fill can"], links: ["https://example.com/guide"], media: [{ name: "plant.jpg" }], blockers: ["Need fertilizer"], notes: "Use the balcony tap", startDate: "2026-06-01", frequencyConfig: { type: "weekly", interval: 2, weekdays: [1, 4] }, endCondition: { type: "count", count: 5 } };
+  const values: RoutineFormValues<{ name: string }> = { title: "Water plants", description: "Deep water", process: ["Fill can"], links: ["https://example.com/guide"], media: [{ name: "plant.jpg" }], blockers: ["Need fertilizer"], notes: "Use the balcony tap", startDate: "2026-06-01", scheduledTime: "08:30", frequencyConfig: { type: "weekly", interval: 2, weekdays: [1, 4] }, endCondition: { type: "count", count: 5 } };
   const created = createRoutineFromForm(7, values);
   const edited = mergeRoutineFormValues({ ...created, completedDates: { "2026-06-01": true } }, { ...values, title: "Water balcony plants", frequencyConfig: { type: "daily", mode: "weekday", interval: 1 } });
   equal(created.media[0].name, "plant.jpg");
@@ -110,6 +110,7 @@ test("preserves routine fields and completion history across create and edit val
   deepStrictEqual(edited.media, values.media);
   deepStrictEqual(edited.blockers, values.blockers);
   equal(edited.startDate, values.startDate);
+  equal(edited.scheduledTime, "08:30");
   equal(edited.frequencyConfig.type, "daily");
   deepStrictEqual(edited.endCondition, values.endCondition);
   deepStrictEqual(edited.completedDates, { "2026-06-01": true });
