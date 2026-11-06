@@ -148,5 +148,6 @@ test("accordion keeps one section active and toggles the active section closed",
   assert.equal(toggleAccordion(null, "frequency"), "frequency");
   assert.equal(toggleAccordion("frequency", "links"), "links");
   assert.equal(toggleAccordion("links", "links"), null);
+  assert.equal(toggleAccordion(null, "schedule"), "schedule");
 });
 
