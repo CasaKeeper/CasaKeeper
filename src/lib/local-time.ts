@@ -1,7 +1,7 @@
 export function normalizeLocalTime(value: string | null | undefined): string | null {
-  if (!value || !/^\d{2}:\d{2}$/.test(value)) return null;
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59 ? value : null;
+  if (!value || !/^\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value)) return null;
+  const [hours, minutes, seconds = 0] = value.split(":").map(Number);
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59 && seconds >= 0 && seconds <= 59 ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}` : null;
 }
 
 export function formatLocalTime(value: string | null | undefined): string | null {

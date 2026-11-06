@@ -4,12 +4,14 @@ import { compareLocalTimes, formatLocalTime, normalizeLocalTime } from "./local-
 
 test("normalizes valid local wall-clock times and rejects invalid values", () => {
   assert.equal(normalizeLocalTime("15:00"), "15:00");
+  assert.equal(normalizeLocalTime("15:00:00"), "15:00");
   assert.equal(normalizeLocalTime("24:00"), null);
   assert.equal(normalizeLocalTime("3:00"), null);
 });
 
 test("formats local times without converting through UTC", () => {
   assert.equal(formatLocalTime("15:00"), "3:00 PM");
+  assert.equal(formatLocalTime("15:00:00"), "3:00 PM");
   assert.equal(formatLocalTime(null), null);
 });
 
