@@ -21,6 +21,12 @@ html[data-theme="dark"] { --background: #111827; --surface: #1b2535; --surface-s
 .task-list { max-width: 800px; display: flex; flex-direction: column; gap: 16px; }
 .task-card { min-height: 0; cursor: pointer; }
 .task-card:hover { border-color: #b9cdf4; box-shadow: 0 14px 34px rgba(36,121,237,.1); }
+.task-card-completed { min-height: 0; padding: 13px 15px; }
+.task-card-completed .card-topline { margin-bottom: 6px; }
+.task-card-completed h3 { margin: 0; }
+.task-card-completed .task-summary { display: none; }
+.task-card-completed .card-actions { margin-top: 10px; }
+.task-card-completed .card-actions .button { min-height: 34px; padding: 0 11px; }
 .task-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 3px 0 13px; color: var(--muted); font-size: 11px; }
 .task-summary span { display: inline-flex; align-items: center; gap: 5px; }
 .back-button { box-sizing: border-box; width: fit-content; max-width: 100%; flex: 0 0 auto; border: 1px solid var(--blue); background: var(--blue); color: white; border-radius: 8px; padding: 9px 12px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 7px; font: inherit; font-size: 12px; font-weight: 700; line-height: 1.2; text-decoration: none; white-space: nowrap; align-self: flex-start; cursor: pointer; box-shadow: 0 3px 8px rgba(36,121,237,.18); transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
