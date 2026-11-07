@@ -1,9 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeProcessSteps, type ProcessStep } from "@/lib/process-steps";
 import type { RoutineEndCondition, RoutineFrequency } from "@/lib/routines";
+import type { ItemType } from "@/lib/item-types";
 
 export type RoutineRow = {
   id: string;
+  created_at: string;
+  type: ItemType | null;
   title: string;
   description: string;
   start_date: string;
@@ -24,7 +27,7 @@ export type RoutineCompletionRow = {
 };
 
 export async function loadHouseholdRoutines(supabase: SupabaseClient) {
-  const routinesResult = await supabase.from("routines").select("id, title, description, start_date, scheduled_time, frequency_config, end_condition, process_steps, links, notes").order("created_at", { ascending: false });
+  const routinesResult = await supabase.from("routines").select("id, created_at, type, title, description, start_date, scheduled_time, frequency_config, end_condition, process_steps, links, notes").order("created_at", { ascending: false });
   if (routinesResult.error) return { routines: [] as RoutineRow[], completions: [] as RoutineCompletionRow[], error: routinesResult.error };
   const ids = (routinesResult.data || []).map((routine) => routine.id);
   if (!ids.length) return { routines: (routinesResult.data || []) as RoutineRow[], completions: [] as RoutineCompletionRow[], error: null };

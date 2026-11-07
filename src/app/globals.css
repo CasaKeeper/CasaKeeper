@@ -308,6 +308,28 @@ html[data-theme="dark"] .calendar-event-bar.calendar-event-completed { backgroun
 .modal-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .schedule-radio-stacked { display: block !important; min-height: 0 !important; }
 .schedule-radio-choice { display: flex !important; flex-direction: row !important; align-items: center; gap: 8px; min-height: 28px; }
+.has-item-type { border-left: 4px solid var(--blue); }
+.item-type-icon { width: 29px; height: 29px; border-radius: 9px; display: inline-grid; place-items: center; background: var(--surface-soft); flex: 0 0 29px; }
+.item-type-detail { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 700; margin: 0; }
+.advanced-filters { display: flex; flex-direction: column; gap: 8px; max-width: 800px; }
+.filter-toggle { align-self: flex-start; border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; display: inline-flex; align-items: center; gap: 7px; color: var(--ink); background: var(--surface); font-size: 12px; font-weight: 800; }
+.filter-toggle:hover { color: var(--blue); border-color: #b7cdf8; background: var(--blue-soft); }
+.filter-panel { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
+.filter-panel-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.filter-help { color: var(--muted); font-size: 12px; margin: 0; }
+.filter-row { display: grid; grid-template-columns: minmax(130px, .45fr) minmax(0, 1fr) 36px; align-items: start; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.filter-row label,.filter-type-options { display: flex; flex-direction: column; gap: 5px; color: var(--ink); font-size: 11px; font-weight: 700; }
+.filter-row select { min-height: 36px; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; color: var(--ink); background: var(--surface-soft); }
+.filter-type-options { min-width: 0; margin: 0; border: 0; padding: 0; }
+.filter-type-options legend { padding: 0; }
+.filter-type-options > div { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.filter-type-options label { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; font-weight: 400; }
+.filter-type-options input { width: 16px; height: 16px; min-height: 16px; }
+.calendar-type-badge { display: inline-flex; align-items: center; width: fit-content; border-radius: 999px; padding: 2px 5px; color: currentColor; background: color-mix(in srgb, currentColor 12%, transparent); font-size: 8px; font-weight: 800; letter-spacing: .03em; }
+.task-modal .form-footer { justify-content: space-between; }
+.task-modal .form-footer .button-danger { margin-right: auto; }
+.form-footer .modal-danger-action { margin: 0; padding: 0; border: 0; }
+@media (max-width: 520px) { .filter-row { grid-template-columns: minmax(0, 1fr) 36px; }.filter-row > label:first-child { grid-column: 1 / -1; }.filter-type-options { grid-column: 1 / -1; }.form-footer:has(.modal-danger-action) { flex-wrap: wrap; }.form-footer:has(.modal-danger-action) .modal-danger-action { margin-right: auto; }.form-footer:has(.modal-danger-action) > .button { flex: 0 1 auto; } }
 .schedule-radio-choice > input[type="radio"] { flex: 0 0 17px; width: 17px; height: 17px; min-width: 17px; min-height: 17px; margin: 0; accent-color: var(--blue); }
 .schedule-radio-choice > span { min-width: 0; }
 .specific-date-control { width: 100%; padding: 7px 0 0 25px; }
