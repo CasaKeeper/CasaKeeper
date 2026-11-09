@@ -15,6 +15,9 @@ grant select, delete on table public.attachments to authenticated;
 grant select, insert, update, delete on table public.resource_types to authenticated;
 grant select, insert, update, delete on table public.resource_links to authenticated;
 
+-- Attachment metadata is written by the authorized server/RPC workflow.
+revoke insert, update on table public.attachments from anon, authenticated;
+
 -- Upload intents and cleanup jobs remain unavailable to browser clients.
 revoke all on table public.resource_upload_intents from anon, authenticated;
 revoke insert, update, delete on table public.resource_storage_cleanup_jobs from anon, authenticated;
