@@ -21,13 +21,12 @@ import type { HouseholdContext } from "@/lib/supabase/auth";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { filterTasksByCompletion, normalizeTaskDate, taskPayload, validTaskLinks } from "@/lib/tasks";
 import { formatLocalTime, normalizeLocalTime } from "@/lib/local-time";
-import { filterVisibleResources, validResourceLinks } from "@/lib/resources";
+import { validResourceLinks } from "@/lib/resources";
 import { attachmentPreviewMode } from "@/lib/attachment-viewer";
 import { appendResourceDiagnostic, knownResourcePresence, sanitizeResourceDiagnostics, type ResourceDiagnosticSnapshot } from "@/lib/resource-diagnostics";
 import { mergeProcessSteps, normalizeProcessSteps, nextProcessStep, processProgress, toggleProcessStep, type ProcessStep } from "@/lib/process-steps";
 import { routineCompletionWrite, toggleOccurrenceStep } from "@/lib/routine-completions";
 import { MAX_RESOURCE_FILE_BYTES, MAX_RESOURCE_UPLOAD_BYTES, MAX_RESOURCE_UPLOAD_FILES, RESOURCE_STORAGE_BUCKET } from "@/lib/resource-storage";
-import { filterAndSortByTitle, type SortDirection } from "@/lib/listing";
 import { getBrowserStorage, readStoredTheme, writeStoredTheme, type Theme } from "@/lib/theme";
 import { ITEM_TYPES, itemType, validItemType, type ItemType } from "@/lib/item-types";
 import { isTaskOverdue, matchesType, sortByMode, type FilterRow, type ScheduledMode, type SortMode } from "@/lib/item-filters";
@@ -93,6 +92,7 @@ type Routine = {
 };
 type WishlistItem = {
     id: string | number;
+    createdAt?: string | null;
     title: string;
     link?: string;
     links?: string[];
@@ -107,6 +107,7 @@ type ResourceType = {
 };
 type Resource = {
     id: string | number;
+    createdAt?: string | null;
     title: string;
     description: string;
     resourceTypeId: string;
@@ -158,7 +159,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
     const pathname = usePathname();
     const section: Section = pathname === "/" ? "home" : (pathname?.slice(1) as Section) || "home";
     const [tasks, setTasks] = useState<Task[]>(initialTasks || []), [routines, setRoutines] = useState<Routine[]>(initialRoutines || []), [wishlist, setWishlist] = useState<WishlistItem[]>(initialWishlist || []), [resources, setResources] = useState<Resource[]>(initialResources || []), [resourceTypes, setResourceTypes] = useState<ResourceType[]>(initialResourceTypes || []);
-    const [modal, setModal] = useState<ModalKind>(null), [editingId, setEditingId] = useState<string | number | null>(null), [editingValue, setEditingValue] = useState<Partial<FormValue> | undefined>(), [resourceDetailId, setResourceDetailId] = useState<string | null>(null), [newMenuOpen, setNewMenuOpen] = useState(false), [search, setSearch] = useState(""), [resourceSort, setResourceSort] = useState<SortDirection>("asc"), [resourceTypeFilter, setResourceTypeFilter] = useState(""), [taskError, setTaskError] = useState(taskLoadError || ""), [routineError, setRoutineError] = useState(routineLoadError || ""), [wishlistError, setWishlistError] = useState(wishlistLoadError || ""), [resourceError, setResourceError] = useState(resourceLoadError || ""), [blockerTaskId, setBlockerTaskId] = useState<string | null>(null), [busyProcessSteps, setBusyProcessSteps] = useState<Record<string, boolean>>({}), [theme, setTheme] = useState<Theme>("light"), [themeReady, setThemeReady] = useState(false);
+    const [modal, setModal] = useState<ModalKind>(null), [editingId, setEditingId] = useState<string | number | null>(null), [editingValue, setEditingValue] = useState<Partial<FormValue> | undefined>(), [resourceDetailId, setResourceDetailId] = useState<string | null>(null), [newMenuOpen, setNewMenuOpen] = useState(false), [search, setSearch] = useState(""), [resourceSort, setResourceSort] = useState<SortMode>("title-asc"), [resourceTypeFilter, setResourceTypeFilter] = useState(""), [taskError, setTaskError] = useState(taskLoadError || ""), [routineError, setRoutineError] = useState(routineLoadError || ""), [wishlistError, setWishlistError] = useState(wishlistLoadError || ""), [resourceError, setResourceError] = useState(resourceLoadError || ""), [blockerTaskId, setBlockerTaskId] = useState<string | null>(null), [busyProcessSteps, setBusyProcessSteps] = useState<Record<string, boolean>>({}), [theme, setTheme] = useState<Theme>("light"), [themeReady, setThemeReady] = useState(false);
     const routinePendingRef = useRef<Record<string, boolean>>({});
     const taskPendingRef = useRef<Record<string, boolean>>({});
     const wishlistPendingRef = useRef<Record<string, boolean>>({});
@@ -481,20 +482,20 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
         const payload = { title: value.title.trim(), description: value.description.trim(), resource_type_id: value.resourceTypeId, links, notes: notes.join("\n") };
         const supabase = createSupabaseBrowserClient();
         if (editingId !== null) {
-            const { data, error } = await supabase.from("resources").update(payload).eq("id", editingId).select("id, title, description, resource_type_id, links, notes").single();
+            const { data, error } = await supabase.from("resources").update(payload).eq("id", editingId).select("id, created_at, title, description, resource_type_id, links, notes").single();
             if (error || !data)
                 throw error || new Error("Unable to save the resource.");
             const current = resources.find((item) => item.id === editingId);
             const retained = (current?.attachments || []).filter((attachment) => value.media.some((file) => file.id === attachment.id));
             await removeResourceFiles(String(data.id), (current?.attachments || []).filter((attachment) => !value.media.some((file) => file.id === attachment.id)).map((attachment) => attachment.id));
             const uploaded = await uploadResourceFiles(String(data.id), value.media);
-            setResources((items) => items.map((item) => item.id === editingId ? { ...item, id: data.id, title: data.title, description: data.description, resourceTypeId: data.resource_type_id, resourceTypeName: resourceTypes.find((type) => type.id === data.resource_type_id)?.name, links: data.links || [], notes: data.notes ? data.notes.split("\n") : [], attachments: [...retained, ...uploaded] } : item));
+            setResources((items) => items.map((item) => item.id === editingId ? { ...item, id: data.id, createdAt: data.created_at, title: data.title, description: data.description, resourceTypeId: data.resource_type_id, resourceTypeName: resourceTypes.find((type) => type.id === data.resource_type_id)?.name, links: data.links || [], notes: data.notes ? data.notes.split("\n") : [], attachments: [...retained, ...uploaded] } : item));
             return;
         }
-        const { data, error } = await supabase.from("resources").insert({ household_id: householdId, ...payload }).select("id, title, description, resource_type_id, links, notes").single();
+        const { data, error } = await supabase.from("resources").insert({ household_id: householdId, ...payload }).select("id, created_at, title, description, resource_type_id, links, notes").single();
         if (error || !data)
             throw error || new Error("Unable to create the resource.");
-        const createdResource = { id: data.id, title: data.title, description: data.description, resourceTypeId: data.resource_type_id, resourceTypeName: resourceTypes.find((type) => type.id === data.resource_type_id)?.name, links: data.links || [], notes: data.notes ? data.notes.split("\n") : [], attachments: [] as MediaAttachment[] };
+        const createdResource = { id: data.id, createdAt: data.created_at, title: data.title, description: data.description, resourceTypeId: data.resource_type_id, resourceTypeName: resourceTypes.find((type) => type.id === data.resource_type_id)?.name, links: data.links || [], notes: data.notes ? data.notes.split("\n") : [], attachments: [] as MediaAttachment[] };
         setResources((items) => [createdResource, ...items]);
         if (value.media.length) {
             setEditingId(data.id);
@@ -515,16 +516,16 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
         const payload = { title: value.title.trim(), price_cents: priceCents ?? null, links, notes: value.notes.trim() };
         const supabase = createSupabaseBrowserClient();
         if (editingId !== null) {
-            const { data, error } = await supabase.from("wishlist_items").update(payload).eq("id", editingId).select("id, title, price_cents, links, notes, purchased").single();
+            const { data, error } = await supabase.from("wishlist_items").update(payload).eq("id", editingId).select("id, created_at, title, price_cents, links, notes, purchased").single();
             if (error || !data)
                 throw error || new Error("Unable to save the wishlist item.");
-            setWishlist((items) => items.map((item) => item.id === editingId ? { ...item, id: data.id, title: data.title, link: data.links[0], links: data.links, notes: data.notes, priceCents: data.price_cents === null ? undefined : data.price_cents, purchased: data.purchased } : item));
+            setWishlist((items) => items.map((item) => item.id === editingId ? { ...item, id: data.id, createdAt: data.created_at, title: data.title, link: data.links[0], links: data.links, notes: data.notes, priceCents: data.price_cents === null ? undefined : data.price_cents, purchased: data.purchased } : item));
             return;
         }
-        const { data, error } = await supabase.from("wishlist_items").insert({ household_id: householdId, ...payload }).select("id, title, price_cents, links, notes, purchased").single();
+        const { data, error } = await supabase.from("wishlist_items").insert({ household_id: householdId, ...payload }).select("id, created_at, title, price_cents, links, notes, purchased").single();
         if (error || !data)
             throw error || new Error("Unable to create the wishlist item.");
-        setWishlist((items) => [{ id: data.id, title: data.title, link: data.links[0], links: data.links, notes: data.notes, priceCents: data.price_cents === null ? undefined : data.price_cents, purchased: data.purchased }, ...items]);
+        setWishlist((items) => [{ id: data.id, createdAt: data.created_at, title: data.title, link: data.links[0], links: data.links, notes: data.notes, priceCents: data.price_cents === null ? undefined : data.price_cents, purchased: data.purchased }, ...items]);
     };
     const toggleWishlistPurchase = async (id: string | number, purchased: boolean) => {
         const key = String(id);
@@ -641,18 +642,20 @@ function ItemTypeIcon({ type }: {
     const Icon = definition.icon === "hammer" ? Hammer : definition.icon === "droplet" ? Droplet : definition.icon === "zap" ? Zap : definition.icon === "sprout" ? Sprout : definition.icon === "shield-check" ? ShieldCheck : ClipboardList;
     return <span className="item-type-icon" style={{ color: definition.color }} title={definition.label} aria-label={definition.label}><Icon size={16}/></span>;
 }
-function AdvancedFilters({ kind, rows, onRowsChange }: {
-    kind: "tasks" | "routines";
+function AdvancedFilters({ kind, rows, onRowsChange, sort, onSortChange }: {
+    kind: "tasks" | "routines" | "wishlist";
     rows: FilterRow[];
     onRowsChange: (rows: FilterRow[]) => void;
+    sort: SortMode;
+    onSortChange: (sort: SortMode) => void;
 }) {
     const [open, setOpen] = useState(false);
-    const availableFields = kind === "tasks" ? ["type", "scheduled"] as const : ["type"] as const;
+    const availableFields = kind === "tasks" ? ["type", "scheduled"] as const : kind === "routines" ? ["type"] as const : [] as const;
     const updateRow = (id: string, next: Partial<FilterRow>) => onRowsChange(rows.map((row) => row.id === id ? { ...row, ...next } : row));
     const addRow = () => { const field = availableFields.find((candidate) => !rows.some((row) => row.field === candidate)); if (!field)
         return; onRowsChange([...rows, { id: crypto.randomUUID(), field, types: [], scheduled: "scheduled" }]); setOpen(true); };
     const removeRow = (id: string) => onRowsChange(rows.filter((row) => row.id !== id));
-    return <div className={"advanced-filters " + (rows.length ? "has-filters" : "")}><button type="button" className="filter-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}><span>{"Filter" + (rows.length ? " (" + rows.length + ")" : "")}</span><ChevronRight size={15} className={open ? "schedule-chevron is-open" : "schedule-chevron"}/></button>{open && <div className="filter-panel"><div className="filter-panel-actions"><button type="button" className="button button-soft" onClick={addRow} disabled={rows.length >= availableFields.length}>Add Filter</button>{rows.length > 0 && <button type="button" className="button button-ghost" onClick={() => onRowsChange([])}>Reset Filters</button>}</div>{rows.length === 0 && <p className="filter-help">Add a filter to narrow the current list.</p>}{rows.map((row) => <div className="filter-row" key={row.id}><label><span>Field</span><select value={row.field} onChange={(event) => updateRow(row.id, { field: event.target.value as FilterRow["field"], types: [], scheduled: "scheduled" })}>{availableFields.map((field) => <option value={field} key={field}>{field === "type" ? "Type" : "Scheduled"}</option>)}</select></label>{row.field === "type" ? <fieldset className="filter-type-options"><legend>Types (any)</legend><div><label><input type="checkbox" checked={row.types?.includes("none") || false} onChange={(event) => updateRow(row.id, { types: event.target.checked ? [...(row.types || []), "none"] : (row.types || []).filter((type) => type !== "none") })}/> No Type Selected</label>{ITEM_TYPES.map((type) => <label key={type.value}><input type="checkbox" checked={row.types?.includes(type.value) || false} onChange={(event) => updateRow(row.id, { types: event.target.checked ? [...(row.types || []), type.value] : (row.types || []).filter((value) => value !== type.value) })}/> {type.label}</label>)}</div></fieldset> : <label><span>Mode</span><select value={row.scheduled || "scheduled"} onChange={(event) => updateRow(row.id, { scheduled: event.target.value as Exclude<ScheduledMode, "all"> })}><option value="scheduled">Include scheduled</option><option value="unscheduled">Exclude scheduled</option>{kind === "tasks" && <option value="overdue">Only overdue</option>}</select></label>}<button type="button" className="icon-button" onClick={() => removeRow(row.id)} aria-label="Remove filter"><X size={15}/></button></div>)}</div>}</div>;
+    return <div className={"advanced-filters " + (rows.length ? "has-filters" : "")}><button type="button" className="filter-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}><span>{"Filter" + (rows.length ? " (" + rows.length + ")" : "")}</span><ChevronRight size={15} className={open ? "schedule-chevron is-open" : "schedule-chevron"}/></button>{open && <div className="filter-panel"><div className="filter-panel-actions"><button type="button" className="button button-soft" onClick={addRow} disabled={rows.length >= availableFields.length}>Add Filter</button>{(rows.length > 0 || sort !== "title-asc") && <button type="button" className="button button-ghost" onClick={() => { onRowsChange([]); onSortChange("title-asc"); }}>Reset Filters</button>}</div><div className="filter-row filter-sort-row"><label><span>Sort</span><select value={sort} onChange={(event) => onSortChange(event.target.value as SortMode)}><option value="title-asc">Name - A-Z</option><option value="title-desc">Name - Z-A</option><option value="created-desc">Date Added - Newest first</option><option value="created-asc">Date Added - Oldest first</option></select></label><span className="filter-row-fixed">Always applied</span></div>{rows.length === 0 && <p className="filter-help">Add a filter to narrow the current list.</p>}{rows.map((row) => <div className="filter-row" key={row.id}><label><span>Field</span><select value={row.field} onChange={(event) => updateRow(row.id, { field: event.target.value as FilterRow["field"], types: [], scheduled: "scheduled" })}>{availableFields.map((field) => <option value={field} key={field} disabled={rows.some((other) => other.id !== row.id && other.field === field)}>{field === "type" ? "Type" : "Scheduled"}</option>)}</select></label>{row.field === "type" ? <fieldset className="filter-type-options"><legend>Types (any)</legend><div><label><input type="checkbox" checked={row.types?.includes("none") || false} onChange={(event) => updateRow(row.id, { types: event.target.checked ? [...(row.types || []), "none"] : (row.types || []).filter((type) => type !== "none") })}/> No Type Selected</label>{ITEM_TYPES.map((type) => <label key={type.value}><input type="checkbox" checked={row.types?.includes(type.value) || false} onChange={(event) => updateRow(row.id, { types: event.target.checked ? [...(row.types || []), type.value] : (row.types || []).filter((value) => value !== type.value) })}/> {type.label}</label>)}</div></fieldset> : <label><span>Mode</span><select value={row.scheduled || "scheduled"} onChange={(event) => updateRow(row.id, { scheduled: event.target.value as Exclude<ScheduledMode, "all"> })}><option value="scheduled">Include scheduled</option><option value="unscheduled">Exclude scheduled</option>{kind === "tasks" && <option value="overdue">Only overdue</option>}</select></label>}<button type="button" className="icon-button" onClick={() => removeRow(row.id)} aria-label="Remove filter"><X size={15}/></button></div>)}</div>}</div>;
 }
 function TasksView({ tasks, onComplete, onDelete, onToggleProcessStep, onAdd, onEdit, onAddBlocker, onRemoveBlocker }: {
     tasks: Task[];
@@ -671,9 +674,9 @@ function TasksView({ tasks, onComplete, onDelete, onToggleProcessStep, onAdd, on
     const today = dateKey();
     const filtered = filterTasksByCompletion(tasks, filter === "completed").filter((task) => filterRows.every((row) => row.field === "type" ? matchesType(task.type, row.types || []) : row.scheduled === "scheduled" ? Boolean(task.scheduledDate) : row.scheduled === "unscheduled" ? !task.scheduledDate : filter === "completed" || isTaskOverdue(task, today)));
     const visibleTasks = sortByMode(filtered.filter((task) => !query.trim() || task.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())), sort);
-    return <div className="searchable-page"><div className="list-controls"><div className="search-field"><Search size={17} aria-hidden="true"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tasks" aria-label="Search tasks"/></div><label className="sort-field"><span>Sort</span><select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="title-asc">A–Z</option><option value="title-desc">Z–A</option><option value="created-desc">Newest first</option><option value="created-asc">Oldest first</option></select></label></div><AdvancedFilters kind="tasks" rows={filterRows} onRowsChange={setFilterRows}/><TasksViewContent tasks={visibleTasks} filter={filter} noMatch={Boolean(query.trim()) || filterRows.length > 0} onComplete={onComplete} onDelete={onDelete} onToggleProcessStep={onToggleProcessStep} onAdd={onAdd} onEdit={onEdit} onAddBlocker={onAddBlocker} onRemoveBlocker={onRemoveBlocker} onFilterChange={setFilter}/></div>;
+    return <div className="searchable-page"><div className="search-row top-search"><div className="search-field"><Search size={17} aria-hidden="true"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tasks" aria-label="Search tasks"/></div></div><TasksViewContent tasks={visibleTasks} filter={filter} sort={sort} onSortChange={setSort} filterRows={filterRows} onFilterRowsChange={setFilterRows} noMatch={Boolean(query.trim()) || filterRows.length > 0} onComplete={onComplete} onDelete={onDelete} onToggleProcessStep={onToggleProcessStep} onAdd={onAdd} onEdit={onEdit} onAddBlocker={onAddBlocker} onRemoveBlocker={onRemoveBlocker} onFilterChange={setFilter}/></div>;
 }
-function TasksViewContent({ tasks, filter, noMatch = false, onComplete, onDelete, onToggleProcessStep, onAdd, onEdit, onAddBlocker, onRemoveBlocker, onFilterChange }: {
+function TasksViewContent({ tasks, filter, sort, onSortChange, filterRows, onFilterRowsChange, noMatch = false, onComplete, onDelete, onToggleProcessStep, onAdd, onEdit, onAddBlocker, onRemoveBlocker, onFilterChange }: {
     tasks: Task[];
     filter: "active" | "completed";
     noMatch?: boolean;
@@ -685,12 +688,16 @@ function TasksViewContent({ tasks, filter, noMatch = false, onComplete, onDelete
     onAddBlocker: (id: string) => void;
     onRemoveBlocker: (id: string, index: number) => void;
     onFilterChange: (filter: "active" | "completed") => void;
+    sort: SortMode;
+    onSortChange: (sort: SortMode) => void;
+    filterRows: FilterRow[];
+    onFilterRowsChange: (rows: FilterRow[]) => void;
 }) {
     const [detailId, setDetailId] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("task"));
     const selected = tasks.find((task) => task.id === detailId);
     if (selected)
         return <TaskDetail task={selected} onBack={() => setDetailId(null)} onEdit={() => onEdit(selected)} onDelete={() => { onDelete(selected.id); setDetailId(null); }} onComplete={() => { onComplete(selected.id, !selected.completed); setDetailId(null); }} onToggleProcessStep={(stepId) => onToggleProcessStep(selected.id, stepId)} onAddBlocker={() => onAddBlocker(selected.id)} onRemoveBlocker={(index) => onRemoveBlocker(selected.id, index)}/>;
-    return <div className="page-stack"><ListIntro kicker="Keep things moving" title="What's on your plate?" text="Capture the small things that keep your home running smoothly." action={onAdd} label="New task"/><div className="wishlist-filter task-status-tabs" role="group" aria-label="Task status"><button type="button" className={filter === "active" ? "selected" : ""} aria-pressed={filter === "active"} onClick={() => onFilterChange("active")}>Active</button><button type="button" className={filter === "completed" ? "selected" : ""} aria-pressed={filter === "completed"} onClick={() => onFilterChange("completed")}>Completed</button></div><div className="list-toolbar"><span>{tasks.length} {filter === "active" ? "active" : "completed"} {tasks.length === 1 ? "task" : "tasks"}</span></div>{tasks.length ? <div className="task-list">{tasks.map((task) => { const progress = processProgress(task.process); const next = nextProcessStep(task.process); return <article className={"item-card task-card " + (task.type ? "has-item-type " : "") + (task.completed ? "task-card-completed " : "") + (task.blockers.length ? "has-blocker" : "")} style={{ borderLeftColor: itemType(task.type)?.color }} key={task.id} onClick={() => setDetailId(task.id)}><div className="card-topline"><ItemTypeIcon type={task.type}/>{task.blockers.length ? <span className="badge badge-orange"><AlertCircle size={13}/> {task.blockers.length} active blocker{task.blockers.length === 1 ? "" : "s"}</span> : <span className="badge badge-muted">{task.completed ? "Completed" : "Open"}</span>}<button className="icon-button card-menu" aria-label={"Edit " + task.title} onClick={(event) => { event.stopPropagation(); onEdit(task); }}><Pencil size={15}/></button></div><h3>{task.title}</h3><div className="task-summary">{task.process.length > 0 && <span className="next-process-step"><small>Next step</small><strong>{next ? next.text : "All process steps completed."}</strong>{next && <em>{progress.completed} of {progress.total} steps completed</em>}</span>}{task.links.length > 0 && <span><Link2 size={14}/> {task.links.length} {task.links.length === 1 ? "link" : "links"}</span>}{task.media.length > 0 && <span><ExternalLink size={14}/> {task.media.length} media</span>}</div>{task.scheduledDate && <div className="card-meta"><CalendarDays size={14}/> {formatDate(task.scheduledDate)} · {formatLocalTime(task.scheduledTime) || "All day"}</div>}<div className="card-actions">{!task.completed && <button className="button button-soft" onClick={(event) => { event.stopPropagation(); onComplete(task.id, true); }}><Check size={16}/> Complete</button>}{task.completed && <button className="button button-ghost" onClick={(event) => { event.stopPropagation(); onComplete(task.id, false); }}><Undo2 size={16}/> Reopen</button>}</div></article>; })}</div> : <EmptyState icon={ClipboardCheck} title={noMatch ? "No tasks match your search" : filter === "active" ? "No active tasks" : "No completed tasks"} text={noMatch ? "Try a different task title." : filter === "active" ? "A clear list feels good. Add your next task when you're ready." : "Completed tasks will remain available here."} action={filter === "active" ? onAdd : undefined} actionLabel="Create a task"/>}</div>;
+    return <div className="page-stack"><ListIntro kicker="Keep things moving" title="What's on your plate?" text="Capture the small things that keep your home running smoothly." action={onAdd} label="New task"/><div className="wishlist-filter task-status-tabs" role="group" aria-label="Task status"><button type="button" className={filter === "active" ? "selected" : ""} aria-pressed={filter === "active"} onClick={() => onFilterChange("active")}>Active</button><button type="button" className={filter === "completed" ? "selected" : ""} aria-pressed={filter === "completed"} onClick={() => onFilterChange("completed")}>Completed</button></div><AdvancedFilters kind="tasks" rows={filterRows} onRowsChange={onFilterRowsChange} sort={sort} onSortChange={onSortChange}/><div className="list-toolbar"><span>{tasks.length} {filter === "active" ? "active" : "completed"} {tasks.length === 1 ? "task" : "tasks"}</span></div>{tasks.length ? <div className="task-list">{tasks.map((task) => { const progress = processProgress(task.process); const next = nextProcessStep(task.process); return <article className={"item-card task-card " + (task.type ? "has-item-type " : "") + (task.completed ? "task-card-completed " : "") + (task.blockers.length ? "has-blocker" : "")} style={{ borderLeftColor: itemType(task.type)?.color }} key={task.id} onClick={() => setDetailId(task.id)}><div className="card-topline"><ItemTypeIcon type={task.type}/>{task.blockers.length ? <span className="badge badge-orange"><AlertCircle size={13}/> {task.blockers.length} active blocker{task.blockers.length === 1 ? "" : "s"}</span> : <span className="badge badge-muted">{task.completed ? "Completed" : "Open"}</span>}<button className="icon-button card-menu" aria-label={"Edit " + task.title} onClick={(event) => { event.stopPropagation(); onEdit(task); }}><Pencil size={15}/></button></div><h3>{task.title}</h3><div className="task-summary">{task.process.length > 0 && <span className="next-process-step"><small>Next step</small><strong>{next ? next.text : "All process steps completed."}</strong>{next && <em>{progress.completed} of {progress.total} steps completed</em>}</span>}{task.links.length > 0 && <span><Link2 size={14}/> {task.links.length} {task.links.length === 1 ? "link" : "links"}</span>}{task.media.length > 0 && <span><ExternalLink size={14}/> {task.media.length} media</span>}</div>{task.scheduledDate && <div className="card-meta"><CalendarDays size={14}/> {formatDate(task.scheduledDate)} · {formatLocalTime(task.scheduledTime) || "All day"}</div>}<div className="card-actions">{!task.completed && <button className="button button-soft" onClick={(event) => { event.stopPropagation(); onComplete(task.id, true); }}><Check size={16}/> Complete</button>}{task.completed && <button className="button button-ghost" onClick={(event) => { event.stopPropagation(); onComplete(task.id, false); }}><Undo2 size={16}/> Reopen</button>}</div></article>; })}</div> : <EmptyState icon={ClipboardCheck} title={noMatch ? "No tasks match your search" : filter === "active" ? "No active tasks" : "No completed tasks"} text={noMatch ? "Try a different task title." : filter === "active" ? "A clear list feels good. Add your next task when you're ready." : "Completed tasks will remain available here."} action={filter === "active" ? onAdd : undefined} actionLabel="Create a task"/>}</div>;
 }
 /* eslint-disable react/jsx-key -- attachment media rows carry stable keys inside the shared renderer. */
 function LegacyTaskDetail({ task, onBack, onEdit, onDelete, onComplete, onToggleProcessStep, onAddBlocker, onRemoveBlocker }: {
@@ -739,14 +746,6 @@ function StatCard({ icon: Icon, value, label, tone }: {
     label: string;
     tone: string;
 }) { return <div className="stat-card"><span className={"stat-icon " + tone}><Icon size={19}/></span><div><strong>{value}</strong><span>{label}</span></div><MoreHorizontal size={18} className="stat-more"/></div>; }
-function ListControls({ query, onQueryChange, sort, onSortChange, placeholder, label }: {
-    query: string;
-    onQueryChange: (value: string) => void;
-    sort: SortDirection;
-    onSortChange: (value: SortDirection) => void;
-    placeholder: string;
-    label: string;
-}) { return <div className="list-controls"><div className="search-field"><Search size={17} aria-hidden="true"/><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={placeholder} aria-label={label}/></div><label className="sort-field"><span>Sort</span><select value={sort} onChange={(event) => onSortChange(event.target.value as SortDirection)} aria-label={`${label} sort order`}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></label></div>; }
 function RoutinesView({ routines, onToggleProcessStep, onAdd, onCompleteOccurrence, onEdit, onDelete }: {
     routines: Routine[];
     onToggleProcessStep: (id: string, scheduledDate: string, stepId: string) => void;
@@ -760,15 +759,19 @@ function RoutinesView({ routines, onToggleProcessStep, onAdd, onCompleteOccurren
     const [filterRows, setFilterRows] = useState<FilterRow[]>([]);
     const filtered = routines.filter((routine) => filterRows.every((row) => row.field !== "type" || matchesType(routine.type, row.types || [])));
     const visibleRoutines = sortByMode(filtered.filter((routine) => !query.trim() || routine.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())), sort);
-    return <div className="searchable-page"><div className="list-controls"><div className="search-field"><Search size={17} aria-hidden="true"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search routines" aria-label="Search routines"/></div><label className="sort-field"><span>Sort</span><select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="title-asc">A–Z</option><option value="title-desc">Z–A</option><option value="created-desc">Newest first</option><option value="created-asc">Oldest first</option></select></label></div><AdvancedFilters kind="routines" rows={filterRows} onRowsChange={setFilterRows}/><RoutinesViewContent routines={visibleRoutines} onToggleProcessStep={onToggleProcessStep} onAdd={onAdd} onCompleteOccurrence={onCompleteOccurrence} onEdit={onEdit} onDelete={onDelete}/></div>;
+    return <div className="searchable-page"><div className="search-row top-search"><div className="search-field"><Search size={17} aria-hidden="true"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search routines" aria-label="Search routines"/></div></div><RoutinesViewContent routines={visibleRoutines} sort={sort} onSortChange={setSort} filterRows={filterRows} onFilterRowsChange={setFilterRows} onToggleProcessStep={onToggleProcessStep} onAdd={onAdd} onCompleteOccurrence={onCompleteOccurrence} onEdit={onEdit} onDelete={onDelete}/></div>;
 }
-function RoutinesViewContent({ routines, onToggleProcessStep, onAdd, onCompleteOccurrence, onEdit, onDelete }: {
+function RoutinesViewContent({ routines, sort, onSortChange, filterRows, onFilterRowsChange, onToggleProcessStep, onAdd, onCompleteOccurrence, onEdit, onDelete }: {
     routines: Routine[];
     onToggleProcessStep: (id: string, scheduledDate: string, stepId: string) => void;
     onAdd: () => void;
     onCompleteOccurrence: (id: string, scheduledDate: string, completed: boolean) => Promise<boolean>;
     onEdit: (routine: Routine) => void;
     onDelete: (id: string) => Promise<string | null>;
+    sort: SortMode;
+    onSortChange: (sort: SortMode) => void;
+    filterRows: FilterRow[];
+    onFilterRowsChange: (rows: FilterRow[]) => void;
 }) {
     const [detailId, setDetailId] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("routine"));
     const [today, setToday] = useState("2026-01-01");
@@ -784,7 +787,7 @@ function RoutinesViewContent({ routines, onToggleProcessStep, onAdd, onCompleteO
     if (selected)
         return <RoutineDetail routine={selected} today={today} onBack={() => setDetailId(null)} onEdit={() => onEdit(selected)} onDelete={async () => { const message = await onDelete(selected.id); if (!message)
             setDetailId(null); return message; }} onComplete={(date, completed) => onCompleteOccurrence(selected.id, date, completed)} onToggleProcessStep={(date, stepId) => onToggleProcessStep(selected.id, date, stepId)}/>;
-    return <div className="page-stack"><ListIntro kicker="The rhythm of home" title="Small habits, shared." text="Recurring schedules are calculated locally for this frontend prototype." action={onAdd} label="New routine"/><div className="routine-view-switch" role="group" aria-label="Routine view"><button type="button" className={view === "cards" ? "selected" : ""} aria-pressed={view === "cards"} onClick={() => setView("cards")}>Cards</button><button type="button" className={view === "calendar" ? "selected" : ""} aria-pressed={view === "calendar"} onClick={() => setView("calendar")}>Calendar</button></div>{view === "calendar" ? <RoutineCalendarView routines={routines} today={today} mode={calendarMode} anchor={calendarAnchor} onModeChange={(nextMode) => setCalendarMode(nextMode)} onNavigate={setCalendarAnchor} onOpen={setDetailId} onCompleteOccurrence={onCompleteOccurrence}/> : <><div className="routine-list">{routines.map((routine) => { const occurrences = generateOccurrences({ id: routine.id, startDate: routine.startDate, frequency: routine.frequencyConfig, endCondition: routine.endCondition, completedDates: routine.completedDates }, today, 18); const overdue = occurrences.filter((item) => item.scheduledDate < today && !item.completed); const next = occurrences.find((item) => !item.completed && item.scheduledDate >= today) || overdue[0]; return <article className={"item-card routine-card " + (routine.type ? "has-item-type" : "")} style={{ borderLeftColor: itemType(routine.type)?.color }} key={routine.id} onClick={() => setDetailId(routine.id)}><div className="card-topline"><ItemTypeIcon type={routine.type}/>{overdue.length ? <span className="badge badge-rose">Overdue</span> : <span className="badge badge-muted">Active</span>}<button className="icon-button card-menu" aria-label={"Edit " + routine.title} onClick={(event) => { event.stopPropagation(); onEdit(routine); }}><Pencil size={15}/></button></div><h3>{routine.title}</h3><p className="frequency"><Repeat2 size={14}/> {summarizeFrequency(routine.frequencyConfig)}</p><div className="next-occurrence"><span>{overdue.length ? "Overdue occurrence" : "Next occurrence"}</span><strong>{next ? formatDate(next.scheduledDate) : "No upcoming date"}{next && <small> · {formatLocalTime(routine.scheduledTime) || "All day"}</small>}</strong></div>{next && <div className="card-actions"><button className="button button-soft" onClick={(event) => { event.stopPropagation(); onCompleteOccurrence(routine.id, next.scheduledDate, true); }}><Check size={16}/> Complete next</button></div>}</article>; })}</div><p className="demo-note"><Sparkles size={14}/> Routine schedules and occurrence progress are saved for this household.</p></>}</div>;
+    return <div className="page-stack"><ListIntro kicker="The rhythm of home" title="Small habits, shared." text="Recurring schedules are calculated locally for this frontend prototype." action={onAdd} label="New routine"/><AdvancedFilters kind="routines" rows={filterRows} onRowsChange={onFilterRowsChange} sort={sort} onSortChange={onSortChange}/><div className="routine-view-switch" role="group" aria-label="Routine view"><button type="button" className={view === "cards" ? "selected" : ""} aria-pressed={view === "cards"} onClick={() => setView("cards")}>Cards</button><button type="button" className={view === "calendar" ? "selected" : ""} aria-pressed={view === "calendar"} onClick={() => setView("calendar")}>Calendar</button></div>{view === "calendar" ? <RoutineCalendarView routines={routines} today={today} mode={calendarMode} anchor={calendarAnchor} onModeChange={(nextMode) => setCalendarMode(nextMode)} onNavigate={setCalendarAnchor} onOpen={setDetailId} onCompleteOccurrence={onCompleteOccurrence}/> : <><div className="routine-list">{routines.map((routine) => { const occurrences = generateOccurrences({ id: routine.id, startDate: routine.startDate, frequency: routine.frequencyConfig, endCondition: routine.endCondition, completedDates: routine.completedDates }, today, 18); const overdue = occurrences.filter((item) => item.scheduledDate < today && !item.completed); const next = occurrences.find((item) => !item.completed && item.scheduledDate >= today) || overdue[0]; return <article className={"item-card routine-card " + (routine.type ? "has-item-type" : "")} style={{ borderLeftColor: itemType(routine.type)?.color }} key={routine.id} onClick={() => setDetailId(routine.id)}><div className="card-topline"><ItemTypeIcon type={routine.type}/>{overdue.length ? <span className="badge badge-rose">Overdue</span> : <span className="badge badge-muted">Active</span>}<button className="icon-button card-menu" aria-label={"Edit " + routine.title} onClick={(event) => { event.stopPropagation(); onEdit(routine); }}><Pencil size={15}/></button></div><h3>{routine.title}</h3><p className="frequency"><Repeat2 size={14}/> {summarizeFrequency(routine.frequencyConfig)}</p><div className="next-occurrence"><span>{overdue.length ? "Overdue occurrence" : "Next occurrence"}</span><strong>{next ? formatDate(next.scheduledDate) : "No upcoming date"}{next && <small> · {formatLocalTime(routine.scheduledTime) || "All day"}</small>}</strong></div>{next && <div className="card-actions"><button className="button button-soft" onClick={(event) => { event.stopPropagation(); onCompleteOccurrence(routine.id, next.scheduledDate, true); }}><Check size={16}/> Complete next</button></div>}</article>; })}</div><p className="demo-note"><Sparkles size={14}/> Routine schedules and occurrence progress are saved for this household.</p></>}</div>;
 }
 function LegacyRoutineCalendarView({ routines, today, mode, anchor, onModeChange, onNavigate, onOpen, onCompleteOccurrence }: {
     routines: Routine[];
@@ -905,37 +908,35 @@ function WishlistView({ items, onAdd, onDelete, onEdit, onTogglePurchase }: {
     onTogglePurchase: (id: string | number, purchased: boolean) => Promise<boolean>;
 }) {
     const [query, setQuery] = useState("");
-    const [sort, setSort] = useState<SortDirection>("asc");
-    const visibleItems = filterAndSortByTitle(items, query, sort, (item) => item.title, (item) => String(item.id));
-    return <div className="searchable-page"><ListControls query={query} onQueryChange={setQuery} sort={sort} onSortChange={setSort} placeholder="Search wishlist" label="Search wishlist"/><WishlistViewContent items={visibleItems} onAdd={onAdd} onDelete={onDelete} onEdit={onEdit} onTogglePurchase={onTogglePurchase}/></div>;
+    const [sort, setSort] = useState<SortMode>("title-asc");
+    const [filterRows, setFilterRows] = useState<FilterRow[]>([]);
+    const filtered = items.filter((item) => !query.trim() || item.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+    const visibleItems = sortByMode(filtered, sort);
+    return <div className="searchable-page"><div className="search-row top-search"><div className="search-field"><Search size={17} aria-hidden="true"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search wishlist" aria-label="Search wishlist"/></div></div><WishlistViewContent items={visibleItems} sort={sort} onSortChange={setSort} filterRows={filterRows} onFilterRowsChange={setFilterRows} onAdd={onAdd} onDelete={onDelete} onEdit={onEdit} onTogglePurchase={onTogglePurchase}/></div>;
 }
-function WishlistViewContent({ items, onAdd, onDelete, onEdit, onTogglePurchase }: {
+function WishlistViewContent({ items, sort, onSortChange, filterRows, onFilterRowsChange, onAdd, onDelete, onEdit, onTogglePurchase }: {
     items: WishlistItem[];
+    sort: SortMode;
+    onSortChange: (sort: SortMode) => void;
+    filterRows: FilterRow[];
+    onFilterRowsChange: (rows: FilterRow[]) => void;
     onAdd: () => void;
     onDelete: (id: string | number) => Promise<boolean>;
     onEdit: (item: WishlistItem) => void;
     onTogglePurchase: (id: string | number, purchased: boolean) => Promise<boolean>;
-}) { const [filter, setFilter] = useState<WishlistFilter>("outstanding"); const [pending, setPending] = useState({} as {
-    [key: string]: boolean;
-}); const visibleItems = filterWishlistItems(items, filter); const togglePurchase = async (item: WishlistItem) => { const key = String(item.id); if (pending[key])
-    return; setPending((current) => ({ ...current, [key]: true })); try {
-    await onTogglePurchase(item.id, !isWishlistPurchased(item));
+}) {
+    const [filter, setFilter] = useState<WishlistFilter>("outstanding");
+    const [pending, setPending] = useState({} as { [key: string]: boolean });
+    const visibleItems = filterWishlistItems(items, filter);
+    const togglePurchase = async (item: WishlistItem) => { const key = String(item.id); if (pending[key]) return; setPending((current) => ({ ...current, [key]: true })); try { await onTogglePurchase(item.id, !isWishlistPurchased(item)); } finally { setPending((current) => ({ ...current, [key]: false })); } };
+    const remove = async (item: WishlistItem) => { if (!window.confirm("Remove this wishlist item?")) return; const key = String(item.id); if (pending[key]) return; setPending((current) => ({ ...current, [key]: true })); try { await onDelete(item.id); } finally { setPending((current) => ({ ...current, [key]: false })); } };
+    return <div className="page-stack narrow-page"><ListIntro kicker="For a future errand" title="Things worth bringing home." text="A shared shelf for the things you want to buy next." action={onAdd} label="Add item"/><div className="wishlist-filter" role="group" aria-label="Wishlist filter"><button type="button" className={filter === "outstanding" ? "selected" : ""} aria-pressed={filter === "outstanding"} onClick={() => setFilter("outstanding")}>Outstanding</button><button type="button" className={filter === "purchased" ? "selected" : ""} aria-pressed={filter === "purchased"} onClick={() => setFilter("purchased")}>Purchased</button></div><AdvancedFilters kind="wishlist" rows={filterRows} onRowsChange={onFilterRowsChange} sort={sort} onSortChange={onSortChange}/><section className="panel checklist-panel"><div className="panel-heading"><div><h3>{filter === "outstanding" ? "Outstanding wishlist" : "Purchased items"}</h3><span className="panel-subtitle">{visibleItems.length} {visibleItems.length === 1 ? "item" : "items"}</span></div><ShoppingBag size={18} className="heading-spark"/></div>{visibleItems.length ? visibleItems.map((item) => <div className={"checklist-row wishlist-card" + (isWishlistPurchased(item) ? " wishlist-card-purchased" : "")} key={item.id}><button className={"check-circle wishlist-check-circle" + (isWishlistPurchased(item) ? " is-purchased" : "")} aria-label={isWishlistPurchased(item) ? "Move " + item.title + " back to Outstanding" : "Mark " + item.title + " as purchased"} onClick={() => void togglePurchase(item)} disabled={Boolean(pending[String(item.id)])}>{isWishlistPurchased(item) ? <Undo2 size={14}/> : <Check size={14}/>}</button><div className="checklist-copy wishlist-card-copy"><strong>{item.title}</strong>{formatWishlistPrice(item.priceCents) && <span className="wishlist-price">{formatWishlistPrice(item.priceCents)}</span>}{item.notes && <span>{item.notes}</span>}{wishlistLinks(item).length > 0 && <div className="wishlist-links">{wishlistLinks(item).map((link) => <a className="wishlist-link-row" href={link} target="_blank" rel="noreferrer" key={link}><Link2 size={13}/><span>{link}</span></a>)}</div>}</div><button className="icon-button" aria-label={"Edit " + item.title} onClick={() => onEdit(item)} disabled={Boolean(pending[String(item.id)])}><Pencil size={15}/></button><button className="icon-button danger-icon" aria-label={"Delete " + item.title} onClick={() => void remove(item)} disabled={Boolean(pending[String(item.id)])}><Trash2 size={15}/></button></div>) : <EmptyState icon={ShoppingBag} title={filter === "outstanding" ? "No outstanding wishlist items." : "No purchased items yet."} text={filter === "outstanding" ? "Add a few ideas when you spot something useful." : "Purchased items will appear here."} action={filter === "outstanding" ? onAdd : undefined} actionLabel="Add wishlist item"/>}</section></div>;
 }
-finally {
-    setPending((current) => ({ ...current, [key]: false }));
-} }; const remove = async (item: WishlistItem) => { if (!window.confirm("Remove this wishlist item?"))
-    return; const key = String(item.id); if (pending[key])
-    return; setPending((current) => ({ ...current, [key]: true })); try {
-    await onDelete(item.id);
-}
-finally {
-    setPending((current) => ({ ...current, [key]: false }));
-} }; return <div className="page-stack narrow-page"><ListIntro kicker="For a future errand" title="Things worth bringing home." text="A shared shelf for the things you want to buy next." action={onAdd} label="Add item"/><div className="wishlist-filter" role="group" aria-label="Wishlist filter"><button type="button" className={filter === "outstanding" ? "selected" : ""} aria-pressed={filter === "outstanding"} onClick={() => setFilter("outstanding")}>Outstanding</button><button type="button" className={filter === "purchased" ? "selected" : ""} aria-pressed={filter === "purchased"} onClick={() => setFilter("purchased")}>Purchased</button></div><section className="panel checklist-panel"><div className="panel-heading"><div><h3>{filter === "outstanding" ? "Outstanding wishlist" : "Purchased items"}</h3><span className="panel-subtitle">{visibleItems.length} {visibleItems.length === 1 ? "item" : "items"}</span></div><ShoppingBag size={18} className="heading-spark"/></div>{visibleItems.length ? visibleItems.map((item) => <div className={"checklist-row wishlist-card" + (isWishlistPurchased(item) ? " wishlist-card-purchased" : "")} key={item.id}><button className={"check-circle wishlist-check-circle" + (isWishlistPurchased(item) ? " is-purchased" : "")} aria-label={isWishlistPurchased(item) ? "Move " + item.title + " back to Outstanding" : "Mark " + item.title + " as purchased"} onClick={() => void togglePurchase(item)} disabled={Boolean(pending[String(item.id)])}>{isWishlistPurchased(item) ? <Undo2 size={14}/> : <Check size={14}/>}</button><div className="checklist-copy wishlist-card-copy"><strong>{item.title}</strong>{formatWishlistPrice(item.priceCents) && <span className="wishlist-price">{formatWishlistPrice(item.priceCents)}</span>}{item.notes && <span>{item.notes}</span>}{wishlistLinks(item).length > 0 && <div className="wishlist-links">{wishlistLinks(item).map((link) => <a className="wishlist-link-row" href={link} target="_blank" rel="noreferrer" key={link}><Link2 size={13}/><span>{link}</span></a>)}</div>}</div><button className="icon-button" aria-label={"Edit " + item.title} onClick={() => onEdit(item)} disabled={Boolean(pending[String(item.id)])}><Pencil size={15}/></button><button className="icon-button danger-icon" aria-label={"Delete " + item.title} onClick={() => void remove(item)} disabled={Boolean(pending[String(item.id)])}><Trash2 size={15}/></button></div>) : <EmptyState icon={ShoppingBag} title={filter === "outstanding" ? "No outstanding wishlist items." : "No purchased items yet."} text={filter === "outstanding" ? "Add a few ideas when you spot something useful." : "Purchased items will appear here."} action={filter === "outstanding" ? onAdd : undefined} actionLabel="Add wishlist item"/>}</section></div>; }
 function ResourceDiagnosticsObserver({ resources, search, typeFilter, sort, detailSelected, viewerOpen }: {
     resources: Resource[];
     search: string;
     typeFilter: string;
-    sort: SortDirection;
+    sort: SortMode;
     detailSelected: boolean;
     viewerOpen: boolean;
 }) {
@@ -969,8 +970,8 @@ function ResourcesView({ resources, search, setSearch, sort, onSortChange, typeF
     resources: Resource[];
     search: string;
     setSearch: (value: string) => void;
-    sort: SortDirection;
-    onSortChange: (value: SortDirection) => void;
+    sort: SortMode;
+    onSortChange: (sort: SortMode) => void;
     typeFilter: string;
     onTypeFilterChange: (value: string) => void;
     onAdd: () => void;
@@ -979,22 +980,26 @@ function ResourcesView({ resources, search, setSearch, sort, onSortChange, typeF
     onDelete?: (id: string | number) => Promise<boolean>;
     onEdit?: (resource: Resource) => void;
 }) {
-    const visibleResources = filterVisibleResources(resources, search, sort, typeFilter);
+    const visibleResources = sortByMode(resources.filter((resource) => {
+        const matchesSearch = !search.trim() || resource.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+        return matchesSearch && (!typeFilter || resource.resourceTypeId === typeFilter);
+    }), sort);
     const diagnostics = useContext(ResourceDiagnosticsContext);
-    useEffect(() => { if (diagnostics.enabled)
-        diagnostics.record("resources-view", { viewInputCount: resources.length, filteredCount: visibleResources.length, knownPresence: knownResourcePresence(visibleResources.map((resource) => resource.id)), searchEmpty: search.trim().length === 0, searchLength: search.trim().length, typeFilterSelected: Boolean(typeFilter), sort }); }, [diagnostics.enabled, resources, search, sort, typeFilter]);
-    return <div className="searchable-page resource-searchable-page"><ListControls query={search} onQueryChange={setSearch} sort={sort} onSortChange={onSortChange} placeholder="Search resources" label="Search resources"/><label className="resource-type-filter"><span>Type</span><select value={typeFilter} onChange={(event) => onTypeFilterChange(event.target.value)}><option value="">All Types</option>{resourceTypes.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label><ResourcesViewContent resources={visibleResources} search={search} setSearch={setSearch} onAdd={onAdd} onOpen={onOpen}/></div>;
+    useEffect(() => { if (diagnostics.enabled) diagnostics.record("resources-view", { viewInputCount: resources.length, filteredCount: visibleResources.length, knownPresence: knownResourcePresence(visibleResources.map((resource) => resource.id)), searchEmpty: search.trim().length === 0, searchLength: search.trim().length, typeFilterSelected: Boolean(typeFilter), sort }); }, [diagnostics.enabled, resources, search, sort, typeFilter]);
+    return <div className="searchable-page resource-searchable-page"><div className="search-row top-search"><div className="search-field"><Search size={17} aria-hidden="true"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search resources" aria-label="Search resources"/></div></div><ResourcesViewContent resources={visibleResources} sort={sort} onSortChange={onSortChange} typeFilter={typeFilter} onTypeFilterChange={onTypeFilterChange} resourceTypes={resourceTypes} onAdd={onAdd} onOpen={onOpen}/></div>;
 }
-function ResourcesViewContent({ resources, search, setSearch, onAdd, onOpen }: {
+function ResourcesViewContent({ resources, sort, onSortChange, typeFilter, onTypeFilterChange, resourceTypes, onAdd, onOpen }: {
     resources: Resource[];
-    search: string;
-    setSearch: (value: string) => void;
+    sort: SortMode;
+    onSortChange: (sort: SortMode) => void;
+    typeFilter: string;
+    onTypeFilterChange: (value: string) => void;
+    resourceTypes: ResourceType[];
     onAdd: () => void;
     onOpen: (resource: Resource) => void;
-}) { return <div className="page-stack"><ListIntro kicker="The useful stuff" title="Keep the good-to-know close." text="A shared shelf for home instructions, manuals, and details." action={onAdd} label="New resource"/><div className="search-row"><div className="search-field"><Search size={17}/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search resources" aria-label="Search resources"/></div><span className="list-count">{resources.length} resources</span></div>{resources.length ? <div className="resource-list">{resources.map((resource) => <article className="resource-list-card" data-resource-id={String(resource.id)} key={resource.id} role="button" tabIndex={0} onClick={() => onOpen(resource)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    onOpen(resource);
-} }} aria-label={"Open resource " + resource.title}><span>{resource.title}</span><small className="resource-type-label">{resource.resourceTypeName || "Other"}</small><ChevronRight size={18} aria-hidden="true"/></article>)}</div> : <EmptyState icon={Folder} title="No resources found" text="Try a different title or Resource Type." action={onAdd} actionLabel="Create a resource"/>}</div>; }
+}) {
+    return <div className="page-stack"><ListIntro kicker="The useful stuff" title="Keep the good-to-know close." text="A shared shelf for home instructions, manuals, and details." action={onAdd} label="New resource"/><AdvancedFilters kind="wishlist" rows={[]} onRowsChange={() => undefined} sort={sort} onSortChange={onSortChange}/><label className="resource-type-filter"><span>Type</span><select value={typeFilter} onChange={(event) => onTypeFilterChange(event.target.value)}><option value="">All Types</option>{resourceTypes.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label><div className="search-row"><span className="list-count">{resources.length} resources</span></div>{resources.length ? <div className="resource-list">{resources.map((resource) => <article className="resource-list-card" data-resource-id={String(resource.id)} key={resource.id} role="button" tabIndex={0} onClick={() => onOpen(resource)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(resource); } }} aria-label={"Open resource " + resource.title}><span>{resource.title}</span><small className="resource-type-label">{resource.resourceTypeName || "Other"}</small><ChevronRight size={18} aria-hidden="true"/></article>)}</div> : <EmptyState icon={Folder} title="No resources found" text="Try a different title or Resource Type." action={onAdd} actionLabel="Create a resource"/>}</div>;
+}
 function AttachmentMediaButton({ attachment, contextLabel }: {
     attachment: MediaAttachment;
     contextLabel: string;

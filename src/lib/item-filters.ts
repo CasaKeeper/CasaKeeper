@@ -18,14 +18,14 @@ export function isTaskOverdue(task: { completed: boolean; scheduledDate?: string
   return task.scheduledDate + "T" + normalizeLocalTime(task.scheduledTime) < localNowKey(now);
 }
 
-export function sortByMode<T extends { title: string; createdAt?: string | null; id: string }>(items: readonly T[], mode: SortMode) {
+export function sortByMode<T extends { title: string; createdAt?: string | null; id: string | number }>(items: readonly T[], mode: SortMode) {
   return [...items].sort((a, b) => {
     if (mode === "title-asc" || mode === "title-desc") {
       const result = a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true });
-      return result === 0 ? a.id.localeCompare(b.id) : mode === "title-asc" ? result : -result;
+      return result === 0 ? String(a.id).localeCompare(String(b.id)) : mode === "title-asc" ? result : -result;
     }
     const result = (a.createdAt || "").localeCompare(b.createdAt || "");
-    return result === 0 ? a.id.localeCompare(b.id) : mode === "created-asc" ? result : -result;
+    return result === 0 ? String(a.id).localeCompare(String(b.id)) : mode === "created-asc" ? result : -result;
   });
 }
 
