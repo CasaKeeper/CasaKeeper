@@ -8,3 +8,10 @@ export function mediaKind(name: string, type: string): "image" | "video" | "docu
 export function isSupportedMedia(name: string, type: string): boolean {
   return supportedMediaExtensions.has(mediaExtension(name)) || type.startsWith("image/") || type.startsWith("video/") || ["application/pdf", "text/plain"].includes(type);
 }
+
+export function partitionSupportedMediaFiles<T extends { name: string; type: string }>(files: readonly T[]) {
+  return files.reduce<{ supported: T[]; unsupported: T[] }>((result, file) => {
+    (isSupportedMedia(file.name, file.type) ? result.supported : result.unsupported).push(file);
+    return result;
+  }, { supported: [], unsupported: [] });
+}

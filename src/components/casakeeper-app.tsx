@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { calendarPeriodRange, countScheduledOccurrencesThrough, dateKey, formatDate, generateOccurrences, generateOccurrencesInRange, occurrenceStatus, ordinalLabels, parseCalendarMode, scheduledOccurrenceDate, shiftDateKey, summarizeFrequency, weekdays, type CalendarMode, type Ordinal, type RoutineEndCondition, type RoutineFrequency, type RoutineOccurrence } from "@/lib/routines";
-import { isSupportedMedia, mediaExtension, mediaKind, supportedMediaAccept } from "@/lib/media";
+import { isSupportedMedia, mediaExtension, mediaKind, partitionSupportedMediaFiles, supportedMediaAccept } from "@/lib/media";
 import { toggleAccordion, type AccordionSection } from "@/lib/accordion";
 import { countOutstandingWishlistItems, filterWishlistItems, isWishlistPurchased, wishlistLinks, type WishlistFilter } from "@/lib/wishlist";
 import { formatWishlistPrice, parseWishlistPrice } from "@/lib/wishlist-price";
@@ -1264,7 +1264,7 @@ function ResourceFormModal({ initial, editing, onClose, onSave, error, resourceT
     return; setValue((current) => ({ ...current, media: current.media.map((file) => { const match = body.attachments.find((attachment: {
         id: string;
         signedUrl: string;
-    }) => attachment.id === file.id); return match ? { ...file, previewUrl: match.signedUrl } : file; }) })); }).catch(() => undefined); return () => { cancelled = true; }; }, [value.resourceId]); const addFiles = (event: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(event.target.files || []); update("media", [...value.media, ...createMediaAttachments(files)]); event.target.value = ""; }; const validLinks = links.every((link) => !link.trim() || /^https?:\/\/\S+$/i.test(link.trim())); return <SpecialFormShell kind="resource" editing={editing} onClose={onClose} onSubmit={async (event) => { event.preventDefault(); if (saving)
+    }) => attachment.id === file.id); return match ? { ...file, previewUrl: match.signedUrl } : file; }) })); }).catch(() => undefined); return () => { cancelled = true; }; }, [value.resourceId]); const addFiles = (files: File[]) => { update("media", [...value.media, ...createMediaAttachments(files)]); }; const validLinks = links.every((link) => !link.trim() || /^https?:\/\/\S+$/i.test(link.trim())); return <SpecialFormShell kind="resource" editing={editing} onClose={onClose} onSubmit={async (event) => { event.preventDefault(); if (saving)
     return; if (!value.title.trim())
     return; if (!validLinks) {
     setActiveSection("links");
@@ -1308,7 +1308,7 @@ function LegacyFormModal({ kind, initial, editing, onClose, onSave, onDelete }: 
     const addRow = (key: "process" | "links" | "blockers") => update(key, [...value[key], ""]);
     const removeRow = (key: "process" | "links" | "blockers", index: number) => update(key, value[key].filter((_, rowIndex) => rowIndex !== index));
     const updateRow = (key: "process" | "links" | "blockers", index: number, next: string) => update(key, value[key].map((row, rowIndex) => rowIndex === index ? next : row));
-    const addFiles = (event: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(event.target.files || []); update("media", [...value.media, ...createMediaAttachments(files)]); event.target.value = ""; };
+    const addFiles = (files: File[]) => { update("media", [...value.media, ...createMediaAttachments(files)]); };
     const removeFile = (id: string) => { const attachment = value.media.find((file) => file.id === id); if (attachment?.previewUrl)
         URL.revokeObjectURL(attachment.previewUrl); update("media", value.media.filter((file) => file.id !== id)); };
     const validLinks = value.links.every((link) => !link.trim() || /^https?:\/\/\S+$/i.test(link.trim()));
@@ -1409,7 +1409,7 @@ function RoutineScheduleFields({ value, onChange }: {
     const addRow = (key: "process" | "links" | "blockers") => update(key, [...value[key], ""]);
     const removeRow = (key: "process" | "links" | "blockers", index: number) => update(key, value[key].filter((_, rowIndex) => rowIndex !== index));
     const updateRow = (key: "process" | "links" | "blockers", index: number, next: string) => update(key, value[key].map((row, rowIndex) => rowIndex === index ? next : row));
-    const addFiles = (event: React.ChangeEvent<HTMLInputElement>) => { const files = Array.from(event.target.files || []); update("media", [...value.media, ...createMediaAttachments(files)]); event.target.value = ""; };
+    const addFiles = (files: File[]) => { update("media", [...value.media, ...createMediaAttachments(files)]); };
     const removeFile = (id: string) => update("media", value.media.filter((file) => file.id !== id));
     const validLinks = value.links.every((link) => !link || /^https?:\/\/\S+$/i.test(link));
     return <><ItemTypeField value={value} onChange={update}/><label><span className="field-label">Description</span><textarea value={value.description} onChange={(event) => update("description", event.target.value)} placeholder="Add a little context" rows={3}/></label><label className="routine-start-date"><span className="field-label">Start date <span className="required">*</span></span><input type="date" value={value.startDate} onChange={(event) => onChange("startDate", event.target.value)} onInvalid={() => onChange("frequencyOpen", true)} required/></label><label className="routine-scheduled-time"><span className="field-label">Time (optional)</span><input type="time" value={value.scheduledTime || ""} onChange={(event) => update("scheduledTime", normalizeLocalTime(event.target.value))}/><span className="field-help">No time means All day.</span></label><RoutineScheduleCard value={value} onChange={onChange}/><RoutineEndConditionFields value={value} onChange={(next) => update("endCondition", next)}/><RepeatableField label="Process" values={value.process} placeholder="Describe the next step" onAdd={() => addRow("process")} onRemove={(index) => removeRow("process", index)} onChange={(index, next) => updateRow("process", index, next)}/><RepeatableField label="Links" values={value.links} placeholder="https://" type="url" error={!validLinks} onAdd={() => addRow("links")} onRemove={(index) => removeRow("links", index)} onChange={(index, next) => updateRow("links", index, next)}/><label><span className="field-label">Additional Notes</span><textarea value={value.additionalNotes} onChange={(event) => update("additionalNotes", event.target.value)} placeholder="Anything else to remember" rows={3}/></label><MediaField files={value.media} onAdd={addFiles} onRemove={removeFile}/></>;
@@ -1433,13 +1433,47 @@ function RepeatableField({ label, values, placeholder, type = "text", error, onA
 }
 function MediaField({ files, onAdd, onRemove }: {
     files: MediaAttachment[];
-    onAdd: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    onAdd: (files: File[]) => void;
     onRemove: (id: string) => void;
 }) {
     const { types, required } = useContext(ResourceTypesContext);
+    const [dragging, setDragging] = useState(false);
+    const [dropError, setDropError] = useState("");
+    const dragDepth = useRef(0);
+    const acceptFiles = (incoming: File[]) => {
+        const partitioned = partitionSupportedMediaFiles(incoming);
+        const unsupported = partitioned.unsupported;
+        if (unsupported.length)
+            setDropError(`${unsupported.length} file${unsupported.length === 1 ? "" : "s"} skipped because the format is not supported.`);
+        else
+            setDropError("");
+        const supported = partitioned.supported;
+        if (supported.length)
+            onAdd(supported);
+    };
+    const onDragEnter = (event: React.DragEvent<HTMLLabelElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragDepth.current += 1;
+        setDragging(true);
+    };
+    const onDragLeave = (event: React.DragEvent<HTMLLabelElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0)
+            setDragging(false);
+    };
+    const onDrop = (event: React.DragEvent<HTMLLabelElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragDepth.current = 0;
+        setDragging(false);
+        acceptFiles(Array.from(event.dataTransfer.files));
+    };
     const updateType = (id: string, resourceTypeId: string) => {
         const event = new CustomEvent("casakeeper-media-type", { detail: { id, resourceTypeId } });
         document.dispatchEvent(event);
     };
-    return <div className="media-field"><div className="field-heading"><span>Media</span></div><label className="upload-zone"><Upload size={21}/><span className="upload-title">Add media</span><span className="upload-help">Images, videos, PDF, Office files, TXT, and CSV</span><input type="file" accept={supportedMediaAccept} multiple onChange={onAdd}/></label>{files.length > 0 && <div className="selected-files">{files.map((file) => { const kind = file.kind || mediaKind(file.name, file.type); const extension = mediaExtension(file.name); const previewImage = kind === "image" && file.previewUrl && extension !== "heic" && extension !== "heif"; return <div className="selected-file" key={file.id}>{previewImage ? <Image src={file.previewUrl as string} alt="" width={64} height={64} unoptimized/> : kind === "video" && file.previewUrl ? <video src={file.previewUrl} controls preload="metadata"/> : <span className="attachment-type-icon"><ExternalLink size={16}/></span>}<span className="attachment-copy"><strong>{file.name}</strong><small>{file.type || extension.toUpperCase()}</small></span>{required && file.file && <label className="attachment-type-select">Resource Type<select required value={file.resourceTypeId || ""} onChange={(event) => updateType(file.id, event.target.value)}><option value="">Select type</option>{types.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>}{file.previewUrl && <a className="attachment-open" href={file.previewUrl} target="_blank" rel="noreferrer" download={file.name}>Open</a>}<button type="button" className="icon-button danger-icon" onClick={() => onRemove(file.id)} aria-label={"Remove " + file.name}><X size={15}/></button></div>; })}</div>}<p className="session-note">{required ? "New Task/Routine files become independent Resources; removing them removes only this association." : "Resource attachments are stored securely and remain available to the household."}</p></div>;
+    return <div className="media-field"><div className="field-heading"><span>Media</span></div><label className={"upload-zone" + (dragging ? " is-dragging" : "")} onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; }} onDrop={onDrop}><Upload size={21}/><span className="upload-title">Drag files here or click to browse.</span><span className="upload-help">Images, videos, PDF, Office files, TXT, and CSV</span><input type="file" accept={supportedMediaAccept} multiple onChange={(event) => { acceptFiles(Array.from(event.target.files || [])); event.target.value = ""; }}/></label>{dropError && <p className="field-error" role="alert">{dropError}</p>}{files.length > 0 && <div className="selected-files">{files.map((file) => { const kind = file.kind || mediaKind(file.name, file.type); const extension = mediaExtension(file.name); const previewImage = kind === "image" && file.previewUrl && extension !== "heic" && extension !== "heif"; return <div className="selected-file" key={file.id}>{previewImage ? <Image src={file.previewUrl as string} alt="" width={64} height={64} unoptimized/> : kind === "video" && file.previewUrl ? <video src={file.previewUrl} controls preload="metadata"/> : <span className="attachment-type-icon"><ExternalLink size={16}/></span>}<span className="attachment-copy"><strong>{file.name}</strong><small>{file.type || extension.toUpperCase()}</small></span>{required && file.file && <label className="attachment-type-select">Resource Type<select required value={file.resourceTypeId || ""} onChange={(event) => updateType(file.id, event.target.value)}><option value="">Select type</option>{types.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>}{file.previewUrl && <a className="attachment-open" href={file.previewUrl} target="_blank" rel="noreferrer" download={file.name}>Open</a>}<button type="button" className="icon-button danger-icon" onClick={() => onRemove(file.id)} aria-label={"Remove " + file.name}><X size={15}/></button></div>; })}</div>}<p className="session-note">{required ? "New Task/Routine files become independent Resources; removing them removes only this association." : "Resource attachments are stored securely and remain available to the household."}</p></div>;
 }
