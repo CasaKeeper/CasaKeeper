@@ -29,6 +29,7 @@ import { routineCompletionWrite, toggleOccurrenceStep } from "@/lib/routine-comp
 import { MAX_RESOURCE_FILE_BYTES, MAX_RESOURCE_UPLOAD_BYTES, MAX_RESOURCE_UPLOAD_FILES, RESOURCE_STORAGE_BUCKET } from "@/lib/resource-storage";
 import { getBrowserStorage, readStoredTheme, writeStoredTheme, type Theme } from "@/lib/theme";
 import { ITEM_TYPES, itemType, validItemType, type ItemType } from "@/lib/item-types";
+import { SAVE_PROGRESS_STAGES } from "@/lib/save-progress";
 import { isTaskOverdue, matchesType, sortByMode, type FilterRow, type ScheduledMode, type SortMode } from "@/lib/item-filters";
 type Section = "home" | "tasks" | "routines" | "wishlist" | "resources" | "account";
 type ModalKind = "task" | "routine" | "wishlist" | "resource" | null;
@@ -1241,7 +1242,8 @@ type FormModalProps = {
 function SaveProgress({ message }: { message?: string }) {
     const contextMessage = useContext(SaveProgressContext);
     const activeMessage = message || contextMessage;
-    if (!activeMessage)
+    const knownStage = activeMessage && SAVE_PROGRESS_STAGES.some((stage) => activeMessage === stage || activeMessage.startsWith(`${stage} (`));
+    if (!activeMessage || !knownStage)
         return null;
     return <div className="save-progress" role="status" aria-live="polite"><div className="save-progress-label"><span>{activeMessage}</span><span className="save-progress-spinner" aria-hidden="true"/></div><div className="save-progress-bar" aria-hidden="true"><span/></div></div>;
 }
