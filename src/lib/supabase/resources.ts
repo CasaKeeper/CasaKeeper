@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import "server-only";
+import { createSupabaseServiceClient } from "./service";
 
 export type ResourceRow = {
   id: string;
@@ -39,8 +41,11 @@ export async function loadHouseholdResources(supabase: SupabaseClient) {
   if (attachmentsResult.error) return { resources, resourceTypes: (typesResult.data || []) as ResourceTypeRow[], attachments: [] as ResourceAttachmentRow[], links: (linksResult.data || []) as ResourceLinkRow[], error: attachmentsResult.error };
   const attachments = (attachmentsResult.data || []) as ResourceAttachmentRow[];
   if (attachments.length) {
-    const signed = await supabase.storage.from("casakeeper-private").createSignedUrls(attachments.map((attachment) => attachment.storage_path), 600);
-    if (!signed.error) attachments.forEach((attachment, index) => { attachment.signed_url = signed.data?.[index]?.signedUrl || undefined; });
+    try {
+      const signed = await createSupabaseServiceClient().storage.from("casakeeper-private").createSignedUrls(attachments.map((attachment) => attachment.storage_path), 600);
+      if (!signed.error) attachments.forEach((attachment, index) => { attachment.signed_url = signed.data?.[index]?.signedUrl || undefined; });
+    }
+    catch { /* Keep metadata available when signed URL generation is temporarily unavailable. */ }
   }
   return { resources, resourceTypes: (typesResult.data || []) as ResourceTypeRow[], attachments, links: (linksResult.data || []) as ResourceLinkRow[], error: null };
 }

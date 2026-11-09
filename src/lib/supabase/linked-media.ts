@@ -7,6 +7,7 @@ export type LinkedMedia = {
   size: number;
   storagePath: string;
   previewUrl?: string;
+  refreshUrl?: string;
   resourceId: string;
   resourceLinkId: string;
 };
@@ -32,6 +33,7 @@ export function getLinkedMedia(
       size: attachment.file_size,
       storagePath: attachment.storage_path,
       previewUrl: attachment.signed_url,
+      refreshUrl: `/api/resources/${encodeURIComponent(link.resource_id)}/attachments/${encodeURIComponent(attachment.id)}`,
       resourceId: link.resource_id,
       resourceLinkId: link.id,
     })));

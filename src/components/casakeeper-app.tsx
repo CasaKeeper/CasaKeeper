@@ -42,6 +42,7 @@ type MediaAttachment = {
     size: number;
     kind?: MediaKind;
     previewUrl?: string;
+    refreshUrl?: string;
     storagePath?: string;
     resourceId?: string;
     resourceLinkId?: string;
@@ -179,7 +180,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
     const [diagnosticHistory, setDiagnosticHistory] = useState<ResourceDiagnosticSnapshot[]>([]);
     const diagnosticStateRef = useRef({ viewInputIds: resources.map((item) => item.id), filteredIds: resources.map((item) => item.id), renderedIds: [] as Array<string | number> });
     const openAttachmentViewer = (attachment: MediaAttachment, contextLabel: string) => {
-        if (attachment.previewUrl) {
+        if (attachment.previewUrl || attachment.refreshUrl) {
             setAttachmentViewer({ attachment, contextLabel });
             recordDiagnostic("attachment-viewer-open", { viewerOpen: true });
         }
@@ -1065,9 +1066,10 @@ function AttachmentMediaButton({ attachment, contextLabel }: {
 }) {
     const openAttachment = useContext(AttachmentViewerContext);
     const kind = attachment.kind || mediaKind(attachment.name, attachment.type);
-    return <button type="button" className="media-item media-item-button" onClick={() => openAttachment(attachment, contextLabel)} disabled={!attachment.previewUrl} aria-label={attachment.previewUrl ? `Preview ${attachment.name}` : `${attachment.name} preview unavailable`}>
-    {attachment.previewUrl && kind === "image" ? <Image src={attachment.previewUrl} alt={attachment.name} width={320} height={180} unoptimized/> : kind === "video" ? <span className="attachment-type-icon"><ExternalLink size={19}/></span> : <span className="attachment-type-icon"><ExternalLink size={19}/></span>}
+    return <button type="button" className="media-item media-item-button" onClick={() => openAttachment(attachment, contextLabel)} aria-label={attachment.previewUrl ? `Preview ${attachment.name}` : `Retry preview for ${attachment.name}`}>
+    {attachment.previewUrl && kind === "image" ? <Image src={attachment.previewUrl} alt={attachment.name} width={320} height={180} unoptimized/> : attachment.previewUrl && kind === "video" ? <span className="media-video-thumb"><video src={attachment.previewUrl} muted preload="metadata" aria-hidden="true"/><span className="resource-play-mark" aria-hidden="true">▶</span></span> : <span className="attachment-type-icon"><ExternalLink size={19}/></span>}
     <span>{attachment.name}</span>
+    {!attachment.previewUrl && <small className="media-unavailable">Preview unavailable · retry</small>}
   </button>;
 }
 function ResourceDetailViewLegacy({ resource, onBack, onEdit, onDelete }: {
@@ -1114,9 +1116,28 @@ function AttachmentViewer({ attachment, contextLabel, onClose }: {
 }) {
     const closeRef = useRef<HTMLButtonElement>(null);
     const [previewFailed, setPreviewFailed] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState(attachment.previewUrl);
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshError, setRefreshError] = useState("");
     const extension = mediaExtension(attachment.name);
     const previewMode = attachmentPreviewMode(attachment.name, attachment.type);
-    const canPreview = !previewFailed && Boolean(attachment.previewUrl);
+    const canPreview = !previewFailed && Boolean(previewUrl);
+    const retryPreview = async () => {
+        if (!attachment.refreshUrl || refreshing)
+            return;
+        setRefreshing(true);
+        setRefreshError("");
+        try {
+            const response = await fetch(attachment.refreshUrl);
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || !body.signedUrl)
+                throw new Error(body.error || "Preview is temporarily unavailable.");
+            setPreviewUrl(body.signedUrl);
+            setPreviewFailed(false);
+        }
+        catch (cause) { setRefreshError(cause instanceof Error ? cause.message : "Preview is temporarily unavailable."); }
+        finally { setRefreshing(false); }
+    };
     useEffect(() => {
         const previousOverflow = document.body.style.overflow;
         const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape")
@@ -1126,10 +1147,10 @@ function AttachmentViewer({ attachment, contextLabel, onClose }: {
         closeRef.current?.focus();
         return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", onKeyDown); };
     }, [onClose]);
-    if (typeof document === "undefined" || !attachment.previewUrl)
+    if (typeof document === "undefined")
         return null;
     return createPortal(<div className="attachment-viewer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget)
-        onClose(); }}><section className="attachment-viewer" role="dialog" aria-modal="true" aria-labelledby="attachment-viewer-title"><header className="attachment-viewer-header"><div><span className="section-kicker">{contextLabel}</span><h2 id="attachment-viewer-title">{attachment.name}</h2></div><button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="Close attachment viewer"><X size={19}/></button></header><div className="attachment-viewer-body">{canPreview && previewMode === "image" ? <Image src={attachment.previewUrl} alt={attachment.name} width={1200} height={900} unoptimized onError={() => setPreviewFailed(true)}/> : canPreview && previewMode === "video" ? <video src={attachment.previewUrl} controls autoPlay playsInline onError={() => setPreviewFailed(true)}/> : canPreview && previewMode === "pdf" ? <iframe src={attachment.previewUrl} title={attachment.name} onError={() => setPreviewFailed(true)}/> : <div className="attachment-viewer-fallback"><span className="resource-file-mark">{extension.toUpperCase() || "FILE"}</span><p>Preview unavailable in this browser.</p></div>}</div><footer className="attachment-viewer-footer"><span className="attachment-viewer-type">{attachment.type || extension.toUpperCase() || "File"}</span><div><a className="button button-ghost" href={attachment.previewUrl} target="_blank" rel="noreferrer">Open externally</a><a className="button button-primary" href={attachment.previewUrl} download={attachment.name}>Download</a></div></footer></section></div>, document.body);
+        onClose(); }}><section className="attachment-viewer" role="dialog" aria-modal="true" aria-labelledby="attachment-viewer-title"><header className="attachment-viewer-header"><div><span className="section-kicker">{contextLabel}</span><h2 id="attachment-viewer-title">{attachment.name}</h2></div><button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="Close attachment viewer"><X size={19}/></button></header><div className="attachment-viewer-body">{canPreview && previewMode === "image" ? <Image src={previewUrl as string} alt={attachment.name} width={1200} height={900} unoptimized onError={() => setPreviewFailed(true)}/> : canPreview && previewMode === "video" ? <video src={previewUrl as string} controls autoPlay playsInline onError={() => setPreviewFailed(true)}/> : canPreview && previewMode === "pdf" ? <iframe src={previewUrl as string} title={attachment.name} onError={() => setPreviewFailed(true)}/> : <div className="attachment-viewer-fallback"><span className="resource-file-mark">{extension.toUpperCase() || "FILE"}</span><p>{refreshError || "Preview unavailable in this browser."}</p>{attachment.refreshUrl && <button type="button" className="button button-secondary" onClick={() => void retryPreview()} disabled={refreshing}>{refreshing ? "Retrying…" : "Retry preview"}</button>}</div>}</div><footer className="attachment-viewer-footer"><span className="attachment-viewer-type">{attachment.type || extension.toUpperCase() || "File"}</span><div>{previewUrl && <><a className="button button-ghost" href={previewUrl} target="_blank" rel="noreferrer">Open externally</a><a className="button button-primary" href={previewUrl} download={attachment.name}>Download</a></>}</div></footer></section></div>, document.body);
 }
 function ResourceDetailView({ resource, onBack, onEdit, onDelete }: {
     resource?: Resource;
