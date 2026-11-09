@@ -125,6 +125,7 @@ const ResourceTypesContext = createContext<{
     types: ResourceType[];
     required: boolean;
 }>({ types: [], required: false });
+const SaveProgressContext = createContext<string | undefined>(undefined);
 const AttachmentViewerContext = createContext<(attachment: MediaAttachment, contextLabel: string) => void>(() => undefined);
 type ResourceDiagnosticsContextValue = {
     enabled: boolean;
@@ -160,6 +161,8 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
     const section: Section = pathname === "/" ? "home" : (pathname?.slice(1) as Section) || "home";
     const [tasks, setTasks] = useState<Task[]>(initialTasks || []), [routines, setRoutines] = useState<Routine[]>(initialRoutines || []), [wishlist, setWishlist] = useState<WishlistItem[]>(initialWishlist || []), [resources, setResources] = useState<Resource[]>(initialResources || []), [resourceTypes, setResourceTypes] = useState<ResourceType[]>(initialResourceTypes || []);
     const [modal, setModal] = useState<ModalKind>(null), [editingId, setEditingId] = useState<string | number | null>(null), [editingValue, setEditingValue] = useState<Partial<FormValue> | undefined>(), [resourceDetailId, setResourceDetailId] = useState<string | null>(null), [newMenuOpen, setNewMenuOpen] = useState(false), [search, setSearch] = useState(""), [resourceSort, setResourceSort] = useState<SortMode>("title-asc"), [resourceTypeFilter, setResourceTypeFilter] = useState(""), [taskError, setTaskError] = useState(taskLoadError || ""), [routineError, setRoutineError] = useState(routineLoadError || ""), [wishlistError, setWishlistError] = useState(wishlistLoadError || ""), [resourceError, setResourceError] = useState(resourceLoadError || ""), [blockerTaskId, setBlockerTaskId] = useState<string | null>(null), [busyProcessSteps, setBusyProcessSteps] = useState<Record<string, boolean>>({}), [theme, setTheme] = useState<Theme>("light"), [themeReady, setThemeReady] = useState(false);
+    const [saveStage, setSaveStage] = useState<string | undefined>();
+    const saveInProgressRef = useRef(false);
     const routinePendingRef = useRef<Record<string, boolean>>({});
     const taskPendingRef = useRef<Record<string, boolean>>({});
     const wishlistPendingRef = useRef<Record<string, boolean>>({});
@@ -235,6 +238,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             if (error || !data)
                 throw error || new Error("Unable to save the task.");
             const current = tasks.find((item) => item.id === editingId);
+            if (value.media.some((file) => Boolean(file.file))) setSaveStage(`Uploading attachments (${value.media.filter((file) => Boolean(file.file)).length} ${value.media.filter((file) => Boolean(file.file)).length === 1 ? "file" : "files"})`);
             const media = await persistParentMedia("task", data.id, data.title, value.media, current?.media || []);
             setTasks((items) => items.map((item) => item.id === editingId ? { ...item, createdAt: data.created_at, type: data.type, title: data.title, description: data.description, due: data.scheduled_date || undefined, scheduledDate: data.scheduled_date, scheduledTime: data.scheduled_time, process: normalizeProcessSteps(data.process_steps), links: data.links || [], media, blockers: data.blockers || [], notes: data.notes, completed: data.completed } : item));
         }
@@ -244,6 +248,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
                 throw error || new Error("Unable to create the task.");
             setTasks((items) => [{ id: data.id, createdAt: data.created_at, type: data.type, title: data.title, description: data.description, due: data.scheduled_date || undefined, scheduledDate: data.scheduled_date, scheduledTime: data.scheduled_time, process: normalizeProcessSteps(data.process_steps), links: data.links || [], media: [], blockers: data.blockers || [], notes: data.notes, completed: data.completed }, ...items]);
             setEditingId(data.id);
+            if (value.media.some((file) => Boolean(file.file))) setSaveStage(`Uploading attachments (${value.media.filter((file) => Boolean(file.file)).length} ${value.media.filter((file) => Boolean(file.file)).length === 1 ? "file" : "files"})`);
             const media = await persistParentMedia("task", data.id, data.title, value.media, []);
             setTasks((items) => items.map((item) => item.id === data.id ? { ...item, media } : item));
         }
@@ -278,6 +283,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             const { data, error } = await supabase.from("routines").update(payload).eq("id", existing.id).select("id, created_at, type, title, description, start_date, scheduled_time, frequency_config, end_condition, process_steps, links, notes").single();
             if (error || !data)
                 throw error || new Error("Unable to save the routine.");
+            if (value.media.some((file) => Boolean(file.file))) setSaveStage(`Uploading attachments (${value.media.filter((file) => Boolean(file.file)).length} ${value.media.filter((file) => Boolean(file.file)).length === 1 ? "file" : "files"})`);
             const media = await persistParentMedia("routine", data.id, data.title, value.media, existing.media);
             setRoutines((items) => items.map((routine) => routine.id === existing.id ? { ...routine, createdAt: data.created_at, type: data.type, title: data.title, description: data.description, startDate: data.start_date, scheduledTime: data.scheduled_time, frequencyConfig: data.frequency_config, endCondition: data.end_condition || { type: "indefinite" }, process: normalizeProcessSteps(data.process_steps).map((step) => step.text), processSteps: normalizeProcessSteps(data.process_steps), links: data.links || [], media, blockers: [], notes: data.notes } : routine));
             return;
@@ -287,55 +293,54 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             throw error || new Error("Unable to create the routine.");
         setRoutines((items) => [{ id: data.id, createdAt: data.created_at, type: data.type, title: data.title, description: data.description, startDate: data.start_date, scheduledTime: data.scheduled_time, frequencyConfig: data.frequency_config, endCondition: data.end_condition || { type: "indefinite" }, process: normalizeProcessSteps(data.process_steps).map((step) => step.text), processSteps: normalizeProcessSteps(data.process_steps), links: data.links || [], media: [], blockers: [], notes: data.notes, completedDates: {}, occurrenceProcess: {} }, ...items]);
         setEditingId(data.id);
+        if (value.media.some((file) => Boolean(file.file))) setSaveStage(`Uploading attachments (${value.media.filter((file) => Boolean(file.file)).length} ${value.media.filter((file) => Boolean(file.file)).length === 1 ? "file" : "files"})`);
         const media = await persistParentMedia("routine", data.id, data.title, value.media, []);
         setRoutines((items) => items.map((routine) => routine.id === data.id ? { ...routine, media } : routine));
     };
-    const save = async (value: FormValue): Promise<boolean> => { if (!value.title.trim())
-        return false; if (modal === "task") {
-        setTaskError("");
+    const save = async (value: FormValue): Promise<boolean> => {
+        if (!value.title.trim() || saveInProgressRef.current)
+            return false;
+        saveInProgressRef.current = true;
+        setSaveStage("Validating files");
         try {
-            await persistTask(value);
+            setSaveStage("Saving details");
+            if (modal === "task") {
+                setTaskError("");
+                await persistTask(value);
+            }
+            else if (modal === "routine") {
+                setRoutineError("");
+                await persistRoutine(value);
+            }
+            else if (modal === "wishlist") {
+                setWishlistError("");
+                await persistWishlist(value);
+            }
+            else if (modal === "resource") {
+                setResourceError("");
+                await persistResource(value);
+            }
+            else {
+                return false;
+            }
+            setSaveStage("Finalizing");
             closeForm();
             return true;
         }
         catch (cause) {
-            setTaskError(cause instanceof Error ? cause.message : "Unable to save the task.");
+            const message = cause instanceof Error ? cause.message : "Unable to save your changes.";
+            if (modal === "task") setTaskError(message);
+            else if (modal === "routine") setRoutineError(message);
+            else if (modal === "wishlist") setWishlistError(message);
+            else if (modal === "resource") setResourceError(message);
+            setSaveStage(undefined);
             return false;
         }
-    } if (modal === "routine") {
-        setRoutineError("");
-        try {
-            await persistRoutine(value);
-            closeForm();
-            return true;
+        finally {
+            saveInProgressRef.current = false;
+            setSaveStage(undefined);
         }
-        catch (cause) {
-            setRoutineError(cause instanceof Error ? cause.message : "Unable to save the routine.");
-            return false;
-        }
-    } if (modal === "wishlist") {
-        setWishlistError("");
-        try {
-            await persistWishlist(value);
-            closeForm();
-            return true;
-        }
-        catch (cause) {
-            setWishlistError(cause instanceof Error ? cause.message : "Unable to save the wishlist item.");
-            return false;
-        }
-    } if (modal === "resource") {
-        setResourceError("");
-        try {
-            await persistResource(value);
-            closeForm();
-            return true;
-        }
-        catch (cause) {
-            setResourceError(cause instanceof Error ? cause.message : "Unable to save the resource.");
-            return false;
-        }
-    } return false; };
+    };
     const deleteTask = async (id: string): Promise<string | null> => {
         if (!householdId)
             return "Household membership is unavailable.";
@@ -488,6 +493,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             const current = resources.find((item) => item.id === editingId);
             const retained = (current?.attachments || []).filter((attachment) => value.media.some((file) => file.id === attachment.id));
             await removeResourceFiles(String(data.id), (current?.attachments || []).filter((attachment) => !value.media.some((file) => file.id === attachment.id)).map((attachment) => attachment.id));
+            if (value.media.some((file) => Boolean(file.file))) setSaveStage(`Uploading attachments (${value.media.filter((file) => Boolean(file.file)).length} ${value.media.filter((file) => Boolean(file.file)).length === 1 ? "file" : "files"})`);
             const uploaded = await uploadResourceFiles(String(data.id), value.media);
             setResources((items) => items.map((item) => item.id === editingId ? { ...item, id: data.id, createdAt: data.created_at, title: data.title, description: data.description, resourceTypeId: data.resource_type_id, resourceTypeName: resourceTypes.find((type) => type.id === data.resource_type_id)?.name, links: data.links || [], notes: data.notes ? data.notes.split("\n") : [], attachments: [...retained, ...uploaded] } : item));
             return;
@@ -501,6 +507,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             setEditingId(data.id);
             setEditingValue({ ...value, resourceId: String(data.id) });
         }
+        if (value.media.some((file) => Boolean(file.file))) setSaveStage(`Uploading attachments (${value.media.filter((file) => Boolean(file.file)).length} ${value.media.filter((file) => Boolean(file.file)).length === 1 ? "file" : "files"})`);
         const uploaded = await uploadResourceFiles(String(data.id), value.media);
         setResources((items) => items.map((item) => item.id === data.id ? { ...item, attachments: uploaded } : item));
     };
@@ -628,7 +635,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
     } setTasks((items) => items.filter((item) => item.id !== id)); }} onToggleProcessStep={toggleTaskProcessStep} onAdd={() => openForm("task")} onAddBlocker={addBlocker} onRemoveBlocker={removeBlocker} onEdit={(task) => openEdit("task", task.id, { title: task.title, description: task.description, frequency: "Weekly", link: task.links[0] || "", notes: "", process: task.process.map((step) => step.text), processSteps: task.process, links: task.links, media: task.media, blockers: task.blockers, additionalNotes: task.notes })}/>}{section === "routines" && <RoutinesView routines={routines} onToggleProcessStep={toggleRoutineProcessStep} onAdd={() => openForm("routine")} onCompleteOccurrence={(id, scheduledDate) => completeRoutineOccurrence(id, scheduledDate, true)} onEdit={(routine) => openEdit("routine", routine.id, { title: routine.title, description: routine.description, frequency: "Weekly", link: routine.links[0] || "", notes: routine.notes, process: routine.process, links: routine.links, media: routine.media, blockers: routine.blockers, additionalNotes: routine.notes, startDate: routine.startDate, frequencyConfig: routine.frequencyConfig })} onDelete={deleteRoutine}/>}{section === "wishlist" && <WishlistView items={wishlist} onAdd={() => openForm("wishlist")} onDelete={deleteWishlist} onTogglePurchase={toggleWishlistPurchase} onEdit={(item) => openEdit("wishlist", item.id, { title: item.title, description: "", frequency: "Weekly", link: item.link || "", notes: item.notes || "", process: [], links: item.links || (item.link ? [item.link] : []), media: [], blockers: [], additionalNotes: "" })}/>}{section === "resources" && (resourceDetailId ? <ResourceDetailView resource={resources.find((item) => String(item.id) === resourceDetailId)} onBack={closeResourceDetail} onEdit={(resource) => openEdit("resource", resource.id, { title: resource.title, description: resource.description, frequency: "Weekly", link: resource.links[0] || "", notes: resource.notes[0] || "", resourceNotes: resource.notes, process: [], links: resource.links, media: Array.isArray(resource.attachments) ? resource.attachments : [], blockers: [], additionalNotes: "" })} onDelete={async (id) => { const deleted = await deleteResource(id); if (deleted)
         setResourceDetailId(null); return deleted; }}/> : <ResourcesView resources={filteredResources} resourceTypes={resourceTypes} search={search} setSearch={setSearch} sort={resourceSort} onSortChange={setResourceSort} typeFilter={resourceTypeFilter} onTypeFilterChange={setResourceTypeFilter} onAdd={() => openForm("resource")} onOpen={openResourceDetail} onDelete={deleteResource} onEdit={(resource) => openEdit("resource", resource.id, { title: resource.title, description: resource.description, frequency: "Weekly", link: resource.links[0] || "", notes: resource.notes[0] || "", resourceNotes: resource.notes, process: [], links: resource.links, media: Array.isArray(resource.attachments) ? resource.attachments : [], blockers: [], additionalNotes: "" })}/>)}{section === "account" && <AccountView theme={theme} setTheme={setTheme} accountEmail={accountEmail} household={household} resourceTypes={resourceTypes} onResourceTypesChanged={setResourceTypes}/>}</main>
     <nav className="bottom-nav" aria-label="Primary navigation"><div className="bottom-nav-inner">{navItems.map(({ key, label, href, icon: Icon }) => <Link key={key} className={"nav-item " + (section === key ? "active " : "") + (key === "home" ? "home-nav" : "")} href={href}><span className="nav-icon"><Icon size={key === "home" ? 22 : 19}/></span><span>{label}</span></Link>)}</div></nav>
-    {modal && <FormModal kind={modal} initial={editingValue} editing={editingId !== null} onClose={closeForm} onSave={save} error={modal === "resource" ? resourceError : modal === "task" ? taskError : modal === "routine" ? routineError : wishlistError} resourceTypes={resourceTypes} onDelete={modal === "task" && typeof editingId === "string" ? () => deleteTask(editingId) : modal === "routine" && typeof editingId === "string" ? () => deleteRoutine(editingId) : undefined}/>}{blockerTaskId && <BlockerModal taskTitle={tasks.find((task) => task.id === blockerTaskId)?.title || "Task"} onClose={() => setBlockerTaskId(null)} onSave={(text) => persistBlocker(blockerTaskId, text)}/>}{attachmentViewer && <AttachmentViewer attachment={attachmentViewer.attachment} contextLabel={attachmentViewer.contextLabel} onClose={closeAttachmentViewer}/>}
+    {modal && <FormModal kind={modal} initial={editingValue} editing={editingId !== null} onClose={closeForm} onSave={save} error={modal === "resource" ? resourceError : modal === "task" ? taskError : modal === "routine" ? routineError : wishlistError} resourceTypes={resourceTypes} progressMessage={saveStage} onDelete={modal === "task" && typeof editingId === "string" ? () => deleteTask(editingId) : modal === "routine" && typeof editingId === "string" ? () => deleteRoutine(editingId) : undefined}/>}{blockerTaskId && <BlockerModal taskTitle={tasks.find((task) => task.id === blockerTaskId)?.title || "Task"} onClose={() => setBlockerTaskId(null)} onSave={(text) => persistBlocker(blockerTaskId, text)}/>}{attachmentViewer && <AttachmentViewer attachment={attachmentViewer.attachment} contextLabel={attachmentViewer.contextLabel} onClose={closeAttachmentViewer}/>}
     {diagnosticsEnabled && section === "resources" && <ResourceDiagnosticsObserver resources={resources} search={search} typeFilter={resourceTypeFilter} sort={resourceSort} detailSelected={resourceDetailId !== null} viewerOpen={attachmentViewer !== null}/>}
     {diagnosticsEnabled && section === "resources" && <ResourceDiagnosticsPanel />}
   </div></AttachmentViewerContext.Provider></ResourceDiagnosticsContext.Provider>;
@@ -1229,23 +1236,33 @@ type FormModalProps = {
     onDelete?: () => Promise<string | null>;
     error?: string;
     resourceTypes?: ResourceType[];
+    progressMessage?: string;
 };
+function SaveProgress({ message }: { message?: string }) {
+    const contextMessage = useContext(SaveProgressContext);
+    const activeMessage = message || contextMessage;
+    if (!activeMessage)
+        return null;
+    return <div className="save-progress" role="status" aria-live="polite"><div className="save-progress-label"><span>{activeMessage}</span><span className="save-progress-spinner" aria-hidden="true"/></div><div className="save-progress-bar" aria-hidden="true"><span/></div></div>;
+}
 function FormModal(props: FormModalProps) {
     const [activeSection, setActiveSection] = useState<AccordionSection | null>(() => props.kind === "task" && props.editing && Boolean(props.initial?.scheduledDate) ? "schedule" : null);
     useEffect(() => { const previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = previousOverflow; }; }, []);
     const content = props.kind === "resource" ? <ResourceFormModal {...props}/> : props.kind === "wishlist" ? <WishlistFormModal {...props}/> : <LegacyFormModal {...props}/>;
-    return <AccordionContext.Provider value={{ activeSection, setActiveSection }}><ResourceTypesContext.Provider value={{ types: props.resourceTypes || [], required: props.kind === "task" || props.kind === "routine" }}>{content}</ResourceTypesContext.Provider></AccordionContext.Provider>;
+    return <AccordionContext.Provider value={{ activeSection, setActiveSection }}><SaveProgressContext.Provider value={props.progressMessage}><ResourceTypesContext.Provider value={{ types: props.resourceTypes || [], required: props.kind === "task" || props.kind === "routine" }}>{content}</ResourceTypesContext.Provider></SaveProgressContext.Provider></AccordionContext.Provider>;
 }
-function SpecialFormShell({ kind, editing, onClose, children, onSubmit }: {
+function SpecialFormShell({ kind, editing, onClose, children, onSubmit, saving = false, progressMessage }: {
     kind: "wishlist" | "resource";
     editing: boolean;
     onClose: () => void;
     children: React.ReactNode;
     onSubmit: (event: FormEvent) => void;
+    saving?: boolean;
+    progressMessage?: string;
 }) { const title = kind === "wishlist" ? "New Wishlist Item" : "New Resource"; if (typeof document === "undefined")
-    return null; return createPortal(<div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget)
-    onClose(); }}><div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-header"><div><p className="section-kicker">{editing ? "Edit item" : "Quick add"}</p><h2 id="modal-title">{title}</h2><p>{kind === "wishlist" ? "Save something you'd like to purchase later." : "Keep a useful home reference close by."}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18}/></button></div><form className="modal-form" onSubmit={onSubmit}><div className="modal-body">{children}</div><div className="form-footer"><button type="button" className="button button-ghost" onClick={onClose}>Cancel</button><button type="submit" className="button button-primary">{editing ? "Save changes" : "Save " + kind}</button></div></form></div></div>, document.body); }
-function WishlistFormModal({ initial, editing, onClose, onSave, error }: FormModalProps) { const initialLinks = wishlistLinks(initial || {}); const [value, setValue] = useState<FormValue>({ title: "", description: "", frequency: "Weekly", link: "", notes: "", price: "", process: [], media: [], blockers: [], additionalNotes: "", startDate: "2026-01-01", frequencyConfig: null, frequencyOpen: false, ...initial, links: initialLinks }); const [saving, setSaving] = useState(false); const update = (key: keyof FormValue, next: string | string[]) => setValue((current) => ({ ...current, [key]: next })); const priceCents = parseWishlistPrice(value.price || ""); const invalidPrice = Boolean((value.price || "").trim()) && priceCents === undefined; const validLinks = value.links.every((link) => !link.trim() || /^https?:\/\/\S+$/i.test(link.trim())); return <SpecialFormShell kind="wishlist" editing={editing} onClose={onClose} onSubmit={async (event) => { event.preventDefault(); if (saving)
+    return null; return createPortal(<div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving)
+    onClose(); }}><div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-header"><div><p className="section-kicker">{editing ? "Edit item" : "Quick add"}</p><h2 id="modal-title">{title}</h2><p>{kind === "wishlist" ? "Save something you'd like to purchase later." : "Keep a useful home reference close by."}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close" disabled={saving}><X size={18}/></button></div><form className="modal-form" onSubmit={onSubmit}><div className="modal-body">{children}</div><div className="save-progress-wrap"><SaveProgress message={progressMessage || (saving ? "Validating files" : undefined)}/></div><div className="form-footer"><button type="button" className="button button-ghost" onClick={onClose} disabled={saving}>Cancel</button><button type="submit" className="button button-primary" disabled={saving}>{saving ? progressMessage || "Saving…" : editing ? "Save changes" : "Save " + kind}</button></div></form></div></div>, document.body); }
+function WishlistFormModal({ initial, editing, onClose, onSave, error, progressMessage }: FormModalProps) { const initialLinks = wishlistLinks(initial || {}); const [value, setValue] = useState<FormValue>({ title: "", description: "", frequency: "Weekly", link: "", notes: "", price: "", process: [], media: [], blockers: [], additionalNotes: "", startDate: "2026-01-01", frequencyConfig: null, frequencyOpen: false, ...initial, links: initialLinks }); const [saving, setSaving] = useState(false); const update = (key: keyof FormValue, next: string | string[]) => setValue((current) => ({ ...current, [key]: next })); const priceCents = parseWishlistPrice(value.price || ""); const invalidPrice = Boolean((value.price || "").trim()) && priceCents === undefined; const validLinks = value.links.every((link) => !link.trim() || /^https?:\/\/\S+$/i.test(link.trim())); return <SpecialFormShell kind="wishlist" editing={editing} onClose={onClose} saving={saving} progressMessage={progressMessage} onSubmit={async (event) => { event.preventDefault(); if (saving)
     return; if (invalidPrice || !value.title.trim())
     return; if (!validLinks) {
     const linksSection = document.getElementById("repeatable-links");
@@ -1259,12 +1276,12 @@ function WishlistFormModal({ initial, editing, onClose, onSave, error }: FormMod
 finally {
     setSaving(false);
 } }}><label>Title<span className="required">*</span><input required value={value.title} onChange={(event) => update("title", event.target.value)} autoFocus/></label><label>Price<span className="field-help">Optional USD</span><div className="input-with-icon"><span className="currency-prefix">$</span><input value={value.price || ""} onChange={(event) => update("price", event.target.value)} inputMode="decimal" pattern="^\d+(\.\d{1,2})?$" placeholder="0.00" aria-invalid={invalidPrice}/></div>{invalidPrice && <span className="field-error">Enter a nonnegative amount with up to two decimals.</span>}</label><RepeatableField label="Links" values={value.links} placeholder="https://" type="url" error={!validLinks} onAdd={() => update("links", [...value.links, ""])} onRemove={(index) => update("links", value.links.filter((_, rowIndex) => rowIndex !== index))} onChange={(index, next) => update("links", value.links.map((link, rowIndex) => rowIndex === index ? next : link))}/><label>Additional Notes<textarea value={value.notes} onChange={(event) => update("notes", event.target.value)} rows={3}/></label>{error && <p className="field-error" role="alert">{error}</p>}</SpecialFormShell>; }
-function ResourceFormModal({ initial, editing, onClose, onSave, error, resourceTypes = [] }: FormModalProps) { const [value, setValue] = useState<FormValue>({ title: "", description: "", frequency: "Weekly", link: "", notes: "", price: "", resourceTypeId: resourceTypes[0]?.id, process: [], links: [], media: [], blockers: [], additionalNotes: "", startDate: "2026-01-01", frequencyConfig: null, frequencyOpen: false, ...initial, resourceNotes: initial?.resourceNotes || [] }); const [saving, setSaving] = useState(false); const { setActiveSection } = useContext(AccordionContext); const links = value.links.length ? value.links : value.link ? [value.link] : []; const update = (key: keyof FormValue, next: string | string[] | MediaAttachment[]) => setValue((current) => ({ ...current, [key]: next })); useEffect(() => { if (!value.resourceId)
+function ResourceFormModal({ initial, editing, onClose, onSave, error, resourceTypes = [], progressMessage }: FormModalProps) { const [value, setValue] = useState<FormValue>({ title: "", description: "", frequency: "Weekly", link: "", notes: "", price: "", resourceTypeId: resourceTypes[0]?.id, process: [], links: [], media: [], blockers: [], additionalNotes: "", startDate: "2026-01-01", frequencyConfig: null, frequencyOpen: false, ...initial, resourceNotes: initial?.resourceNotes || [] }); const [saving, setSaving] = useState(false); const { setActiveSection } = useContext(AccordionContext); const links = value.links.length ? value.links : value.link ? [value.link] : []; const update = (key: keyof FormValue, next: string | string[] | MediaAttachment[]) => setValue((current) => ({ ...current, [key]: next })); useEffect(() => { if (!value.resourceId)
     return; let cancelled = false; fetch(`/api/resources/${encodeURIComponent(String(value.resourceId))}/attachments`).then(async (response) => response.ok ? response.json() : null).then((body) => { if (cancelled || !body?.attachments)
     return; setValue((current) => ({ ...current, media: current.media.map((file) => { const match = body.attachments.find((attachment: {
         id: string;
         signedUrl: string;
-    }) => attachment.id === file.id); return match ? { ...file, previewUrl: match.signedUrl } : file; }) })); }).catch(() => undefined); return () => { cancelled = true; }; }, [value.resourceId]); const addFiles = (files: File[]) => { update("media", [...value.media, ...createMediaAttachments(files)]); }; const validLinks = links.every((link) => !link.trim() || /^https?:\/\/\S+$/i.test(link.trim())); return <SpecialFormShell kind="resource" editing={editing} onClose={onClose} onSubmit={async (event) => { event.preventDefault(); if (saving)
+    }) => attachment.id === file.id); return match ? { ...file, previewUrl: match.signedUrl } : file; }) })); }).catch(() => undefined); return () => { cancelled = true; }; }, [value.resourceId]); const addFiles = (files: File[]) => { update("media", [...value.media, ...createMediaAttachments(files)]); }; const validLinks = links.every((link) => !link.trim() || /^https?:\/\/\S+$/i.test(link.trim())); return <SpecialFormShell kind="resource" editing={editing} onClose={onClose} progressMessage={progressMessage} onSubmit={async (event) => { event.preventDefault(); if (saving)
     return; if (!value.title.trim())
     return; if (!validLinks) {
     setActiveSection("links");
@@ -1293,11 +1310,12 @@ function TaskScheduleField({ value, onChange }: {
     return <><ItemTypeField value={value} onChange={onChange}/><section className="repeatable-accordion schedule-field"><button type="button" className="schedule-accordion-trigger" aria-expanded={open} aria-controls="task-schedule-panel" onClick={setOpen}><span className="schedule-accordion-title">Schedule</span><span className="schedule-accordion-summary">{summary}<ChevronRight size={16} className={open ? "schedule-chevron is-open" : "schedule-chevron"}/></span></button><div id="task-schedule-panel" className="schedule-accordion-panel" hidden={!open}><label><span className="field-label">Date (optional)</span><input type="date" value={value.scheduledDate || ""} onChange={(event) => { const next = normalizeTaskDate(event.target.value); onChange("scheduledDate", next); if (!next)
         onChange("scheduledTime", null); }}/></label><label><span className="field-label">Time (optional)</span><input type="time" value={value.scheduledTime || ""} disabled={!value.scheduledDate} onChange={(event) => onChange("scheduledTime", normalizeLocalTime(event.target.value))}/><span className="field-help">No time means All day.</span></label></div></section></>;
 }
-function LegacyFormModal({ kind, initial, editing, onClose, onSave, onDelete }: FormModalProps) {
+function LegacyFormModal({ kind, initial, editing, onClose, onSave, onDelete, progressMessage }: FormModalProps) {
     const defaults: FormValue = { title: "", description: "", frequency: "Weekly", link: "", notes: "", price: "", type: null, scheduledDate: null, scheduledTime: null, process: [], links: [], media: [], blockers: [], additionalNotes: "", startDate: "2026-01-01", frequencyConfig: null, endCondition: { type: "indefinite" }, frequencyOpen: false };
     const [value, setValue] = useState<FormValue>({ ...defaults, ...initial });
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [deleteError, setDeleteError] = useState("");
     useEffect(() => { if (!initial) {
         const timer = window.setTimeout(() => { const currentDate = dateKey(); setValue((current) => ({ ...current, startDate: currentDate })); }, 0);
@@ -1318,11 +1336,23 @@ function LegacyFormModal({ kind, initial, editing, onClose, onSave, onDelete }: 
     }>).detail; if (!detail?.id)
         return; setValue((current) => ({ ...current, media: current.media.map((file) => file.id === detail.id ? { ...file, resourceTypeId: detail.resourceTypeId } : file) })); }; document.addEventListener("casakeeper-media-type", handler); return () => document.removeEventListener("casakeeper-media-type", handler); }, []);
     useEffect(() => { const previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = previousOverflow; }; }, []);
+    const submit = async (event: FormEvent) => {
+        event.preventDefault();
+        if (saving || deleting || (kind === "task" && !validLinks))
+            return;
+        setSaving(true);
+        try {
+            await onSave(value);
+        }
+        finally {
+            setSaving(false);
+        }
+    };
     if (typeof document === "undefined")
         return null;
     return createPortal(<div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteConfirmOpen && !deleting)
-        onClose(); }}><div className={"modal-card " + (kind === "task" ? "task-modal" : "")} role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-header"><div><p className="section-kicker">{editing ? "Edit item" : "Quick add"}</p><h2 id="modal-title">{labels[0]}</h2><p>{labels[1]}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18}/></button></div><form className="modal-form" onSubmit={(event: FormEvent) => { event.preventDefault(); if (kind === "task" && !validLinks)
-        return; onSave(value); }}><div className="modal-body"><label>Title<span className="required">*</span><input value={value.title} onChange={(event) => update("title", event.target.value)} required autoFocus placeholder={kind === "task" ? "e.g. Book a plumber" : kind === "routine" ? "e.g. Clean the coffee machine" : kind === "wishlist" ? "e.g. New bath towels" : "e.g. Washing machine notes"}/></label>{(kind === "task" || kind === "resource") && <label>Description<textarea value={value.description} onChange={(event) => update("description", event.target.value)} placeholder="Add a little context" rows={3}/></label>}{kind === "task" && <><TaskScheduleField value={value} onChange={(key, nextValue) => update(key, nextValue)}/><RepeatableField label="Process" values={value.process} placeholder="Describe the next step" onAdd={() => addRow("process")} onRemove={(index) => removeRow("process", index)} onChange={(index, next) => updateRow("process", index, next)}/><RepeatableField label="Links" values={value.links} placeholder="https://" type="url" error={!validLinks} onAdd={() => addRow("links")} onRemove={(index) => removeRow("links", index)} onChange={(index, next) => updateRow("links", index, next)}/><MediaField files={value.media} onAdd={addFiles} onRemove={removeFile}/><RepeatableField label="Blockers" values={value.blockers} placeholder="What is preventing completion?" onAdd={() => addRow("blockers")} onRemove={(index) => removeRow("blockers", index)} onChange={(index, next) => updateRow("blockers", index, next)}/><label>Additional Notes<textarea value={value.additionalNotes} onChange={(event) => update("additionalNotes", event.target.value)} placeholder="Anything else to remember" rows={3}/></label></>}{kind === "routine" && <RoutineScheduleFields value={value} onChange={(key, next) => update(key, next)}/>}{(kind === "wishlist" || kind === "resource") && <label>{kind === "wishlist" ? "Link" : "Reference link"}<div className="input-with-icon"><Link2 size={16}/><input value={value.link} onChange={(event) => update("link", event.target.value)} type="url" placeholder="https://"/></div></label>}{(kind === "wishlist" || kind === "resource") && <label>{kind === "wishlist" ? "Notes" : "First note"}<textarea value={value.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Optional details" rows={2}/></label>}{kind === "routine" && editing && onDelete && <div className="modal-danger-action"><button type="button" className="button button-danger" onClick={() => { setDeleteError(""); setDeleteConfirmOpen(true); }} disabled={deleting}><Trash2 size={16}/> Delete Routine</button></div>}</div><div className="form-footer">{kind === "task" && editing && onDelete && <button type="button" className="button button-danger" onClick={() => { setDeleteError(""); setDeleteConfirmOpen(true); }} disabled={deleting}><Trash2 size={16}/> Delete Task</button>}<button type="button" className="button button-ghost" onClick={onClose} disabled={deleting}>Cancel</button><button type="submit" className="button button-primary" disabled={deleting}>{editing ? "Save changes" : "Save " + kind}</button></div></form>{deleteConfirmOpen && <div className="modal-confirm-backdrop" role="presentation"><div className="modal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="delete-item-title" aria-describedby="delete-item-description"><div className="modal-confirm-header"><Trash2 size={18}/><h3 id="delete-item-title">Delete {kind === "task" ? "Task" : "Routine"}?</h3></div><p id="delete-item-description">Delete <strong>{value.title || (kind === "task" ? "this task" : "this routine")}</strong> permanently? {kind === "task" ? "Any associated Resources will remain in your Resources library." : "Its occurrence history will also be removed. This cannot be undone."}</p>{deleteError && <p className="field-error" role="alert">{deleteError}</p>}<div className="modal-confirm-actions"><button type="button" className="button button-ghost" onClick={() => setDeleteConfirmOpen(false)} disabled={deleting}>Cancel</button><button type="button" className="button button-danger" onClick={async () => { if (!onDelete || deleting)
+        onClose(); }}><div className={"modal-card " + (kind === "task" ? "task-modal" : "")} role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-header"><div><p className="section-kicker">{editing ? "Edit item" : "Quick add"}</p><h2 id="modal-title">{labels[0]}</h2><p>{labels[1]}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={18}/></button></div><form className="modal-form" onSubmit={submit}>
+<div className="modal-body"><label>Title<span className="required">*</span><input value={value.title} onChange={(event) => update("title", event.target.value)} required autoFocus placeholder={kind === "task" ? "e.g. Book a plumber" : kind === "routine" ? "e.g. Clean the coffee machine" : kind === "wishlist" ? "e.g. New bath towels" : "e.g. Washing machine notes"}/></label>{(kind === "task" || kind === "resource") && <label>Description<textarea value={value.description} onChange={(event) => update("description", event.target.value)} placeholder="Add a little context" rows={3}/></label>}{kind === "task" && <><TaskScheduleField value={value} onChange={(key, nextValue) => update(key, nextValue)}/><RepeatableField label="Process" values={value.process} placeholder="Describe the next step" onAdd={() => addRow("process")} onRemove={(index) => removeRow("process", index)} onChange={(index, next) => updateRow("process", index, next)}/><RepeatableField label="Links" values={value.links} placeholder="https://" type="url" error={!validLinks} onAdd={() => addRow("links")} onRemove={(index) => removeRow("links", index)} onChange={(index, next) => updateRow("links", index, next)}/><MediaField files={value.media} onAdd={addFiles} onRemove={removeFile}/><RepeatableField label="Blockers" values={value.blockers} placeholder="What is preventing completion?" onAdd={() => addRow("blockers")} onRemove={(index) => removeRow("blockers", index)} onChange={(index, next) => updateRow("blockers", index, next)}/><label>Additional Notes<textarea value={value.additionalNotes} onChange={(event) => update("additionalNotes", event.target.value)} placeholder="Anything else to remember" rows={3}/></label></>}{kind === "routine" && <RoutineScheduleFields value={value} onChange={(key, next) => update(key, next)}/>}{(kind === "wishlist" || kind === "resource") && <label>{kind === "wishlist" ? "Link" : "Reference link"}<div className="input-with-icon"><Link2 size={16}/><input value={value.link} onChange={(event) => update("link", event.target.value)} type="url" placeholder="https://"/></div></label>}{(kind === "wishlist" || kind === "resource") && <label>{kind === "wishlist" ? "Notes" : "First note"}<textarea value={value.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Optional details" rows={2}/></label>}{kind === "routine" && editing && onDelete && <div className="modal-danger-action"><button type="button" className="button button-danger" onClick={() => { setDeleteError(""); setDeleteConfirmOpen(true); }} disabled={deleting}><Trash2 size={16}/> Delete Routine</button></div>}</div><div className="save-progress-wrap"><SaveProgress message={progressMessage || (saving ? "Validating files" : undefined)}/></div><div className="form-footer">{kind === "task" && editing && onDelete && <button type="button" className="button button-danger" onClick={() => { setDeleteError(""); setDeleteConfirmOpen(true); }} disabled={deleting}><Trash2 size={16}/> Delete Task</button>}<button type="button" className="button button-ghost" onClick={onClose} disabled={deleting || saving}>Cancel</button><button type="submit" className="button button-primary" disabled={deleting || saving}>{saving ? progressMessage || "Saving…" : editing ? "Save changes" : "Save " + kind}</button></div></form>{deleteConfirmOpen && <div className="modal-confirm-backdrop" role="presentation"><div className="modal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="delete-item-title" aria-describedby="delete-item-description"><div className="modal-confirm-header"><Trash2 size={18}/><h3 id="delete-item-title">Delete {kind === "task" ? "Task" : "Routine"}?</h3></div><p id="delete-item-description">Delete <strong>{value.title || (kind === "task" ? "this task" : "this routine")}</strong> permanently? {kind === "task" ? "Any associated Resources will remain in your Resources library." : "Its occurrence history will also be removed. This cannot be undone."}</p>{deleteError && <p className="field-error" role="alert">{deleteError}</p>}<div className="modal-confirm-actions"><button type="button" className="button button-ghost" onClick={() => setDeleteConfirmOpen(false)} disabled={deleting}>Cancel</button><button type="button" className="button button-danger" onClick={async () => { if (!onDelete || deleting)
         return; setDeleting(true); setDeleteError(""); const message = await onDelete(); if (message) {
         setDeleteError(message);
         setDeleting(false);
