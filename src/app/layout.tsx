@@ -24,6 +24,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#2479ED",
+  viewportFit: "cover",
 };
 
 const themeInitializer = `try { var theme = localStorage.getItem("casakeeper-theme"); if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme; } catch (error) {}`;
