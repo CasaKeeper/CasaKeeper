@@ -503,7 +503,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
                 else
                     resource = inserted.data;
             }
-            const existingAttachments = await fetch(`/api/resources/${encodeURIComponent(String(resource.id))}/attachments`).then(async (response) => response.ok ? (await response.json()).attachments || [] : []).catch(() => []);
+            const existingAttachments = await withAttachmentTimeout(fetch(`/api/resources/${encodeURIComponent(String(resource.id))}/attachments`)).then(async (response) => response.ok ? (await response.json()).attachments || [] : []).catch(() => []);
             const uploaded: MediaAttachment[] = existingAttachments.length ? existingAttachments.map((attachment: {
                 id: string;
                 original_filename: string;
@@ -515,11 +515,12 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             const attachment = uploaded[0];
             if (!attachment)
                 throw new Error("The attachment upload did not complete.");
-            const { data: link, error: linkError } = await supabase.from("resource_links").upsert({ household_id: householdId, resource_id: resource.id, parent_type: parentType, parent_id: parentId }, { onConflict: "resource_id,parent_type,parent_id" }).select("id").single();
+            setSaveStage("Saving details");
+            const { data: link, error: linkError } = await withAttachmentTimeout(Promise.resolve(supabase.from("resource_links").upsert({ household_id: householdId, resource_id: resource.id, parent_type: parentType, parent_id: parentId }, { onConflict: "resource_id,parent_type,parent_id" }).select("id").single()));
             if (linkError || !link) {
                 throw new Error("The file was saved as a Resource, but could not be linked.");
             }
-            const { error: publishError } = await supabase.from("resources").update({ attachment_pending: false }).eq("id", resource.id).eq("household_id", householdId);
+            const { error: publishError } = await withAttachmentTimeout(Promise.resolve(supabase.from("resources").update({ attachment_pending: false }).eq("id", resource.id).eq("household_id", householdId)));
             if (publishError)
                 throw new Error("The attachment was linked, but the Resource could not be published yet. Retry the save.");
             setResources((items) => items.some((item) => item.id === resource.id) ? items : [{ id: resource.id, title: `${parentTitle} — ${file.name}`, description: `Attachment from ${parentType}.`, resourceTypeId: typeId, resourceTypeName: resourceTypes.find((type) => type.id === typeId)?.name, links: [], notes: [], attachments: [attachment] }, ...items]);
