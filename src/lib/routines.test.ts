@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { toggleAccordion } from "./accordion.ts";
 import { calendarPeriodRange, countScheduledOccurrencesThrough, createRoutineFromForm, dateKey, generateOccurrences, generateOccurrencesInRange, mergeRoutineFormValues, occurrenceStatus, parseCalendarMode, parseDateKey, scheduledOccurrenceDate, summarizeFrequency, type RoutineFormValues, type RoutineSchedule } from "./routines.ts";
-import { isSupportedMedia, mediaKind } from "./media.ts";
+import { isSupportedMedia, mediaKind, partitionSupportedMediaFiles } from "./media.ts";
 import { countOutstandingWishlistItems, filterWishlistItems, isWishlistPurchased, wishlistLinks } from "./wishlist.ts";
 import { formatWishlistPrice, parseWishlistPrice } from "./wishlist-price.ts";
 
@@ -124,6 +124,18 @@ test("accepts supported media by extension and classifies previews safely", () =
   equal(mediaKind("photo.heif", ""), "image");
   equal(mediaKind("clip.mp4", ""), "video");
   equal(mediaKind("budget.xlsx", ""), "document");
+});
+
+test("partitions dropped files without changing order", () => {
+  const files = [
+    { name: "photo.png", type: "image/png" },
+    { name: "guide.pdf", type: "application/pdf" },
+    { name: "clip.mov", type: "video/quicktime" },
+    { name: "script.exe", type: "application/x-msdownload" },
+  ];
+  const result = partitionSupportedMediaFiles(files);
+  deepStrictEqual(result.supported.map((file) => file.name), ["photo.png", "guide.pdf", "clip.mov"]);
+  deepStrictEqual(result.unsupported.map((file) => file.name), ["script.exe"]);
 });
 
 test("represents an unselected routine frequency without generating occurrences", () => {
