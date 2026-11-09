@@ -30,6 +30,7 @@ import { MAX_RESOURCE_FILE_BYTES, MAX_RESOURCE_UPLOAD_BYTES, MAX_RESOURCE_UPLOAD
 import { getBrowserStorage, readStoredTheme, writeStoredTheme, type Theme } from "@/lib/theme";
 import { ITEM_TYPES, itemType, validItemType, type ItemType } from "@/lib/item-types";
 import { SAVE_PROGRESS_STAGES } from "@/lib/save-progress";
+import { ATTACHMENT_CLEANUP_TIMEOUT_MS, withAttachmentTimeout } from "@/lib/attachment-request";
 import { isTaskOverdue, matchesType, sortByMode, type FilterRow, type ScheduledMode, type SortMode } from "@/lib/item-filters";
 type Section = "home" | "tasks" | "routines" | "wishlist" | "resources" | "account";
 type ModalKind = "task" | "routine" | "wishlist" | "resource" | null;
@@ -392,15 +393,16 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
         try {
             for (const pending of pendingFiles) {
                 const file = pending.file as File;
-                const authorization = await fetch(`/api/resources/${encodeURIComponent(resourceId)}/attachments/upload-url`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filename: file.name, fileSize: file.size, mimeType: file.type }) });
+                const authorization = await withAttachmentTimeout(fetch(`/api/resources/${encodeURIComponent(resourceId)}/attachments/upload-url`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filename: file.name, fileSize: file.size, mimeType: file.type }) }));
                 const authorizationBody = await authorization.json().catch(() => ({}));
                 if (!authorization.ok)
                     throw new Error(authorizationBody.error || "Unable to authorize resource media upload.");
                 intentIds.push(authorizationBody.intentId);
-                const upload = await createSupabaseBrowserClient().storage.from(RESOURCE_STORAGE_BUCKET).uploadToSignedUrl(authorizationBody.path, authorizationBody.token, file, { contentType: authorizationBody.mimeType, upsert: false });
+                const upload = await withAttachmentTimeout(createSupabaseBrowserClient().storage.from(RESOURCE_STORAGE_BUCKET).uploadToSignedUrl(authorizationBody.path, authorizationBody.token, file, { contentType: authorizationBody.mimeType, upsert: false }));
                 if (upload.error)
                     throw new Error("Unable to upload resource media.");
-                const finalized = await fetch(`/api/resources/${encodeURIComponent(resourceId)}/attachments/finalize`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intentId: authorizationBody.intentId }) });
+                setSaveStage("Finalizing");
+                const finalized = await withAttachmentTimeout(fetch(`/api/resources/${encodeURIComponent(resourceId)}/attachments/finalize`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intentId: authorizationBody.intentId }) }));
                 const finalizedBody = await finalized.json().catch(() => ({}));
                 if (!finalized.ok || !finalizedBody.attachment)
                     throw new Error(finalizedBody.error || "Unable to finalize resource media.");
@@ -414,7 +416,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
         }
         catch (error) {
             if (intentIds.length)
-                await fetch(`/api/resources/${encodeURIComponent(resourceId)}/attachments/cleanup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intentIds }) }).catch(() => undefined);
+                await withAttachmentTimeout(fetch(`/api/resources/${encodeURIComponent(resourceId)}/attachments/cleanup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intentIds }) }), ATTACHMENT_CLEANUP_TIMEOUT_MS).catch(() => undefined);
             throw error;
         }
     };
@@ -427,13 +429,14 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
         try {
             for (const pending of pendingFiles) {
                 const file = pending.file as File;
-                const authorization = await fetch("/api/attachments/upload-url", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentType, parentId, filename: file.name, fileSize: file.size, mimeType: file.type }) });
+                const authorization = await withAttachmentTimeout(fetch("/api/attachments/upload-url", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentType, parentId, filename: file.name, fileSize: file.size, mimeType: file.type }) }));
                 const authorizationBody = await authorization.json().catch(() => ({}));
                 if (!authorization.ok) throw new Error(authorizationBody.error || "Unable to authorize direct attachment upload.");
                 intentIds.push(authorizationBody.intentId);
-                const upload = await createSupabaseBrowserClient().storage.from(RESOURCE_STORAGE_BUCKET).uploadToSignedUrl(authorizationBody.path, authorizationBody.token, file, { contentType: authorizationBody.mimeType, upsert: false });
+                const upload = await withAttachmentTimeout(createSupabaseBrowserClient().storage.from(RESOURCE_STORAGE_BUCKET).uploadToSignedUrl(authorizationBody.path, authorizationBody.token, file, { contentType: authorizationBody.mimeType, upsert: false }));
                 if (upload.error) throw new Error("Unable to upload the direct attachment.");
-                const finalized = await fetch("/api/attachments/finalize", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentType, parentId, intentId: authorizationBody.intentId }) });
+                setSaveStage("Finalizing");
+                const finalized = await withAttachmentTimeout(fetch("/api/attachments/finalize", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentType, parentId, intentId: authorizationBody.intentId }) }));
                 const finalizedBody = await finalized.json().catch(() => ({}));
                 if (!finalized.ok || !finalizedBody.attachment) throw new Error(finalizedBody.error || "Unable to finalize the direct attachment.");
                 intentIds.splice(intentIds.indexOf(authorizationBody.intentId), 1);
@@ -443,7 +446,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             return uploaded;
         }
         catch (error) {
-            if (intentIds.length) await fetch("/api/attachments/cleanup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intentIds }) }).catch(() => undefined);
+            if (intentIds.length) await withAttachmentTimeout(fetch("/api/attachments/cleanup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intentIds }) }), ATTACHMENT_CLEANUP_TIMEOUT_MS).catch(() => undefined);
             throw error;
         }
     };
@@ -1556,5 +1559,5 @@ function MediaField({ files, onAdd, onRemove, allowSaveAsResource = false }: {
         const event = new CustomEvent("casakeeper-media-type", { detail: { id, resourceTypeId } });
         document.dispatchEvent(event);
     };
-    return <div className="media-field"><div className="field-heading"><span>Media</span></div><label className={"upload-zone" + (dragging ? " is-dragging" : "")} onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; }} onDrop={onDrop}><Upload size={21}/><span className="upload-title">Drag files here or click to browse.</span><span className="upload-help">Images, videos, PDF, Office files, TXT, and CSV</span><input type="file" accept={supportedMediaAccept} multiple onChange={(event) => { acceptFiles(Array.from(event.target.files || [])); event.target.value = ""; }}/></label>{dropError && <p className="field-error" role="alert">{dropError}</p>}{files.length > 0 && <div className="selected-files">{files.map((file) => { const kind = file.kind || mediaKind(file.name, file.type); const extension = mediaExtension(file.name); const previewImage = kind === "image" && file.previewUrl && extension !== "heic" && extension !== "heif"; return <div className="selected-file" key={file.id}>{previewImage ? <Image src={file.previewUrl as string} alt="" width={64} height={64} unoptimized/> : kind === "video" && file.previewUrl ? <video src={file.previewUrl} controls preload="metadata"/> : <span className="attachment-type-icon"><ExternalLink size={16}/></span>}<span className="attachment-copy"><strong>{file.name}</strong><small>{file.type || extension.toUpperCase()}</small></span>{((allowSaveAsResource || required) && file.file) && <label className="attachment-save-resource"><input type="checkbox" checked={file.saveAsResource !== false} onChange={(event) => document.dispatchEvent(new CustomEvent("casakeeper-media-type", { detail: { id: file.id, saveAsResource: event.target.checked } }))}/><span>Save as Resource</span></label>}{required && file.file && file.saveAsResource !== false && <label className="attachment-type-select">Resource Type<select required value={file.resourceTypeId || ""} onChange={(event) => updateType(file.id, event.target.value)}><option value="">Select type</option>{types.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>}{file.previewUrl && <a className="attachment-open" href={file.previewUrl} target="_blank" rel="noreferrer" download={file.name}>Open</a>}<button type="button" className="icon-button danger-icon" onClick={() => onRemove(file.id)} aria-label={"Remove " + file.name}><X size={15}/></button></div>; })}</div>}<p className="session-note">{required ? "New Task/Routine files become independent Resources; removing them removes only this association." : "Resource attachments are stored securely and remain available to the household."}</p></div>;
+    return <div className="media-field"><div className="field-heading"><span>Media</span></div><label className={"upload-zone" + (dragging ? " is-dragging" : "")} onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; }} onDrop={onDrop}><Upload size={21}/><span className="upload-title">Drag files here or click to browse.</span><span className="upload-help">Images, videos, PDF, Office files, TXT, and CSV</span><input type="file" accept={supportedMediaAccept} multiple onChange={(event) => { acceptFiles(Array.from(event.target.files || [])); event.target.value = ""; }}/></label>{dropError && <p className="field-error" role="alert">{dropError}</p>}{files.length > 0 && <div className="selected-files">{files.map((file) => { const kind = file.kind || mediaKind(file.name, file.type); const extension = mediaExtension(file.name); const previewImage = kind === "image" && file.previewUrl && extension !== "heic" && extension !== "heif"; return <div className="selected-file" key={file.id}>{previewImage ? <Image src={file.previewUrl as string} alt="" width={64} height={64} unoptimized/> : kind === "video" && file.previewUrl ? <video src={file.previewUrl} controls preload="metadata"/> : <span className="attachment-type-icon"><ExternalLink size={16}/></span>}<span className="attachment-copy"><strong>{file.name}</strong><small>{file.type || extension.toUpperCase()}</small></span>{((allowSaveAsResource || required) && file.file) && <label className="attachment-save-resource"><input type="checkbox" checked={file.saveAsResource !== false} onChange={(event) => document.dispatchEvent(new CustomEvent("casakeeper-media-type", { detail: { id: file.id, saveAsResource: event.target.checked } }))}/><span>Resource</span></label>}{required && file.file && file.saveAsResource !== false && <label className="attachment-type-select">Resource Type<select required value={file.resourceTypeId || ""} onChange={(event) => updateType(file.id, event.target.value)}><option value="">Select type</option>{types.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>}{file.previewUrl && <a className="attachment-open" href={file.previewUrl} target="_blank" rel="noreferrer" download={file.name} aria-label={"Open " + file.name}><ExternalLink size={14}/></a>}<button type="button" className="icon-button danger-icon" onClick={() => onRemove(file.id)} aria-label={"Remove " + file.name}><X size={15}/></button></div>; })}</div>}<p className="session-note">{required ? "New Task/Routine files become independent Resources; removing them removes only this association." : "Resource attachments are stored securely and remain available to the household."}</p></div>;
 }
