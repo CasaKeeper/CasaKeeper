@@ -8,6 +8,11 @@ test("sorts by creation date with deterministic id tie breaking", () => {
   assert.deepEqual(sortByMode(items, "created-asc").map((item) => item.id), ["a", "b", "c"]);
 });
 
+test("supports persisted date sorting for numeric-id records", () => {
+  const items = [{ id: 12, title: "Manual", createdAt: "2026-03-01" }, { id: 4, title: "Manual", createdAt: "2026-03-01" }];
+  assert.deepEqual(sortByMode(items, "created-asc").map((item) => item.id), [12, 4]);
+});
+
 test("matches selected types with OR logic and supports untyped records", () => {
   assert.equal(matchesType("plumbing", ["plumbing", "electrical"]), true);
   assert.equal(matchesType(null, ["none"]), true);

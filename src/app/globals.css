@@ -318,6 +318,8 @@ html[data-theme="dark"] .calendar-event-bar.calendar-event-completed { backgroun
 .filter-panel-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .filter-help { color: var(--muted); font-size: 12px; margin: 0; }
 .filter-row { display: grid; grid-template-columns: minmax(130px, .45fr) minmax(0, 1fr) 36px; align-items: start; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.filter-sort-row { align-items: end; }
+.filter-row-fixed { align-self: end; color: var(--muted); font-size: 11px; padding-bottom: 10px; }
 .filter-row label,.filter-type-options { display: flex; flex-direction: column; gap: 5px; color: var(--ink); font-size: 11px; font-weight: 700; }
 .filter-row select { min-height: 36px; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; color: var(--ink); background: var(--surface-soft); }
 .filter-type-options { min-width: 0; margin: 0; border: 0; padding: 0; }
@@ -329,7 +331,7 @@ html[data-theme="dark"] .calendar-event-bar.calendar-event-completed { backgroun
 .task-modal .form-footer { justify-content: space-between; }
 .task-modal .form-footer .button-danger { margin-right: auto; }
 .form-footer .modal-danger-action { margin: 0; padding: 0; border: 0; }
-@media (max-width: 520px) { .filter-row { grid-template-columns: minmax(0, 1fr) 36px; }.filter-row > label:first-child { grid-column: 1 / -1; }.filter-type-options { grid-column: 1 / -1; }.form-footer:has(.modal-danger-action) { flex-wrap: wrap; }.form-footer:has(.modal-danger-action) .modal-danger-action { margin-right: auto; }.form-footer:has(.modal-danger-action) > .button { flex: 0 1 auto; } }
+@media (max-width: 520px) { .filter-row { grid-template-columns: minmax(0, 1fr) 36px; }.filter-sort-row { grid-template-columns: minmax(0, 1fr); }.filter-row-fixed { padding-bottom: 0; }.filter-row > label:first-child { grid-column: 1 / -1; }.filter-type-options { grid-column: 1 / -1; }.form-footer:has(.modal-danger-action) { flex-wrap: wrap; }.form-footer:has(.modal-danger-action) .modal-danger-action { margin-right: auto; }.form-footer:has(.modal-danger-action) > .button { flex: 0 1 auto; } }
 .schedule-radio-choice > input[type="radio"] { flex: 0 0 17px; width: 17px; height: 17px; min-width: 17px; min-height: 17px; margin: 0; accent-color: var(--blue); }
 .schedule-radio-choice > span { min-width: 0; }
 .specific-date-control { width: 100%; padding: 7px 0 0 25px; }
