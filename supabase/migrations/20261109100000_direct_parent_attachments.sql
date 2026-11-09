@@ -107,13 +107,13 @@ begin
   select a.* into existing_attachment from public.attachments a where a.id = intent.attachment_id;
   if found then
     if existing_attachment.household_id <> current_household or existing_attachment.parent_type <> intent.parent_type or existing_attachment.parent_id <> intent.parent_id or existing_attachment.storage_path <> intent.storage_path then raise exception 'Attachment authorization does not match existing metadata' using errcode = '42501'; end if;
-    update public.resource_upload_intents set finalized_at = coalesce(finalized_at, now()), cleanup_locked_until = null where id = intent.id;
+    update public.resource_upload_intents set finalized_at = coalesce(finalized_at, now()), cleanup_locked_until = null where resource_upload_intents.id = intent.id;
     return query select existing_attachment.id, existing_attachment.parent_id, existing_attachment.original_filename, existing_attachment.mime_type, existing_attachment.file_size, existing_attachment.storage_path, existing_attachment.created_at; return;
   end if;
   if intent.finalized_at is not null then raise exception 'Upload was finalized without matching metadata' using errcode = 'XX000'; end if;
   if intent.expires_at <= now() then raise exception 'upload authorization expired' using errcode = '22023'; end if;
   insert into public.attachments (id, household_id, parent_type, parent_id, original_filename, mime_type, file_size, storage_path) values (intent.attachment_id, current_household, intent.parent_type, intent.parent_id, intent.original_filename, intent.mime_type, intent.file_size, intent.storage_path);
-  update public.resource_upload_intents set finalized_at = now(), cleanup_locked_until = null where id = intent.id;
+  update public.resource_upload_intents set finalized_at = now(), cleanup_locked_until = null where resource_upload_intents.id = intent.id;
   return query select a.id, a.parent_id, a.original_filename, a.mime_type, a.file_size, a.storage_path, a.created_at from public.attachments a where a.id = intent.attachment_id;
 end;
 $$;
