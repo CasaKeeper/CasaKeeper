@@ -13,3 +13,19 @@ export async function getAuthorizedResource(resourceId: string) {
   if (resource.storage_cleanup_pending) return { response: Response.json({ error: "This resource is being deleted. Retry after cleanup completes." }, { status: 409 }) } as const;
   return { supabase, userId: auth.user.id, householdId, resource } as const;
 }
+
+export type AttachmentParentType = "task" | "routine" | "resource";
+
+export async function getAuthorizedAttachmentParent(parentType: AttachmentParentType, parentId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return { response: Response.json({ error: "Authentication required." }, { status: 401 }) } as const;
+  let householdId: string;
+  try { householdId = await getCurrentHouseholdId(supabase, auth.user.id); }
+  catch { return { response: Response.json({ error: "Household membership required." }, { status: 403 }) } as const; }
+  const table = parentType === "task" ? "tasks" : parentType === "routine" ? "routines" : "resources";
+  const query = supabase.from(table).select("id, household_id").eq("id", parentId).eq("household_id", householdId);
+  const { data: parent, error } = await query.single();
+  if (error || !parent) return { response: Response.json({ error: "Attachment parent not found." }, { status: 404 }) } as const;
+  return { supabase, userId: auth.user.id, householdId, parent } as const;
+}

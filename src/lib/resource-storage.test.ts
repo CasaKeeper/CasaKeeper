@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { matchesAuthorizedStoredMime, MAX_RESOURCE_UPLOAD_FILES, MAX_RESOURCE_UPLOAD_BYTES, canonicalResourceMime, chunkStoragePaths, isSupportedResourceFile, resourceStoragePath, safeResourceFilename, storageInfoMime } from "./resource-storage.ts";
+import { matchesAuthorizedStoredMime, MAX_RESOURCE_UPLOAD_FILES, MAX_RESOURCE_UPLOAD_BYTES, canonicalResourceMime, chunkStoragePaths, isSupportedResourceFile, parentAttachmentStoragePath, resourceStoragePath, safeResourceFilename, storageInfoMime } from "./resource-storage.ts";
 
 test("normalizes missing and generic browser MIME values from safe extensions", () => {
   assert.equal(canonicalResourceMime("manual.JPG", ""), "image/jpeg");
@@ -24,6 +24,14 @@ test("enforces upload limits and chunks storage paths", () => {
 test("builds a canonical object path from server-issued identifiers", () => {
   const path = resourceStoragePath("11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333", "manual.pdf");
   assert.equal(path, "11111111-1111-4111-8111-111111111111/resources/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/manual.pdf");
+});
+
+test("builds canonical direct Task and Routine paths without changing Resource paths", () => {
+  const household = "11111111-1111-4111-8111-111111111111";
+  const parent = "22222222-2222-4222-8222-222222222222";
+  const attachment = "33333333-3333-4333-8333-333333333333";
+  assert.equal(parentAttachmentStoragePath(household, "task", parent, attachment, "photo.png"), `${household}/tasks/${parent}/${attachment}/photo.png`);
+  assert.equal(parentAttachmentStoragePath(household, "routine", parent, attachment, "photo.png"), `${household}/routines/${parent}/${attachment}/photo.png`);
 });
 
 test("requires an exact nonempty Storage MIME match", () => {

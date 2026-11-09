@@ -13,7 +13,7 @@ export type LinkedMedia = {
 
 export function indexResourceAttachments(attachments: ResourceAttachmentRow[]) {
   const indexed = new Map<string, ResourceAttachmentRow[]>();
-  attachments.forEach((attachment) => indexed.set(attachment.parent_id, [...(indexed.get(attachment.parent_id) || []), attachment]));
+  attachments.filter((attachment) => !attachment.parent_type || attachment.parent_type === "resource").forEach((attachment) => indexed.set(attachment.parent_id, [...(indexed.get(attachment.parent_id) || []), attachment]));
   return indexed;
 }
 

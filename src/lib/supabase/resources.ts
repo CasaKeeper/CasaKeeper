@@ -15,6 +15,7 @@ export type ResourceTypeRow = { id: string; name: string; household_id: string }
 
 export type ResourceAttachmentRow = {
   id: string;
+  parent_type?: "task" | "routine" | "resource";
   parent_id: string;
   original_filename: string;
   mime_type: string;
@@ -34,8 +35,7 @@ export async function loadHouseholdResources(supabase: SupabaseClient) {
   const resources = (resourcesResult.data || []) as ResourceRow[];
   const linksResult = await supabase.from("resource_links").select("id, resource_id, parent_type, parent_id");
   if (linksResult.error) return { resources, resourceTypes: (typesResult.data || []) as ResourceTypeRow[], attachments: [] as ResourceAttachmentRow[], links: [] as ResourceLinkRow[], error: linksResult.error };
-  if (!resources.length) return { resources, resourceTypes: (typesResult.data || []) as ResourceTypeRow[], attachments: [] as ResourceAttachmentRow[], links: (linksResult.data || []) as ResourceLinkRow[], error: null };
-  const attachmentsResult = await supabase.from("attachments").select("id, parent_id, original_filename, mime_type, file_size, storage_path").eq("parent_type", "resource").in("parent_id", resources.map((resource) => resource.id));
+  const attachmentsResult = await supabase.from("attachments").select("id, parent_type, parent_id, original_filename, mime_type, file_size, storage_path");
   if (attachmentsResult.error) return { resources, resourceTypes: (typesResult.data || []) as ResourceTypeRow[], attachments: [] as ResourceAttachmentRow[], links: (linksResult.data || []) as ResourceLinkRow[], error: attachmentsResult.error };
   const attachments = (attachmentsResult.data || []) as ResourceAttachmentRow[];
   if (attachments.length) {

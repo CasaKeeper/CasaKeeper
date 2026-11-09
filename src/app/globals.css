@@ -442,6 +442,8 @@ html[data-theme="dark"] .calendar-event-bar.calendar-event-completed { backgroun
 .save-progress-spinner { width: 12px; height: 12px; flex: 0 0 12px; border: 2px solid color-mix(in srgb, var(--blue) 24%, transparent); border-top-color: var(--blue); border-radius: 50%; animation: save-progress-spin .8s linear infinite; }
 .save-progress-bar { height: 4px; overflow: hidden; border-radius: 999px; background: var(--blue-soft); }
 .save-progress-bar span { display: block; width: 34%; height: 100%; border-radius: inherit; background: var(--blue); animation: save-progress-slide 1.15s ease-in-out infinite; }
+.attachment-save-resource { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 6px !important; color: var(--ink) !important; font-size: 11px !important; font-weight: 700 !important; white-space: nowrap; }
+.attachment-save-resource input { width: 16px !important; height: 16px !important; min-height: 16px !important; accent-color: var(--blue); }
 @keyframes save-progress-spin { to { transform: rotate(360deg); } }
 @keyframes save-progress-slide { from { transform: translateX(-130%); } to { transform: translateX(330%); } }
 @media (max-width: 760px) { .save-progress-wrap { padding-left: 17px; padding-right: 17px; } }
