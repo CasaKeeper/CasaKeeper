@@ -24,7 +24,7 @@ export async function POST(request: Request, context: Context) {
   const intentId = crypto.randomUUID();
   const storagePath = resourceStoragePath(access.householdId, resourceId, attachmentId, filename);
   const expiresAt = new Date(Date.now() + RESOURCE_UPLOAD_INTENT_SECONDS * 1000).toISOString();
-  const { error: intentError } = await admin.from("resource_upload_intents").insert({ id: intentId, household_id: access.householdId, resource_id: resourceId, attachment_id: attachmentId, storage_path: storagePath, original_filename: originalFilename, mime_type: mimeType, file_size: fileSize, expires_at: expiresAt });
+  const { error: intentError } = await admin.from("resource_upload_intents").insert({ id: intentId, household_id: access.householdId, resource_id: resourceId, parent_type: "resource", parent_id: resourceId, attachment_id: attachmentId, storage_path: storagePath, original_filename: originalFilename, mime_type: mimeType, file_size: fileSize, expires_at: expiresAt });
   if (intentError) return NextResponse.json({ error: "Unable to prepare the upload." }, { status: 500 });
   const { data: signed, error: signedError } = await access.supabase.storage.from(RESOURCE_STORAGE_BUCKET).createSignedUploadUrl(storagePath, { upsert: false });
   if (signedError || !signed?.token) {

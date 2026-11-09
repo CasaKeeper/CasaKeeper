@@ -46,6 +46,7 @@ type MediaAttachment = {
     resourceLinkId?: string;
     resourceTypeId?: string;
     operationId?: string;
+    saveAsResource?: boolean;
     file?: File;
 };
 type Task = {
@@ -142,7 +143,7 @@ const navItems = [
     { key: "wishlist" as Section, label: "Wishlist", href: "/wishlist", icon: ShoppingBag },
     { key: "resources" as Section, label: "Resources", href: "/resources", icon: Folder },
 ];
-function createMediaAttachments(files: File[], validator = isSupportedMedia): MediaAttachment[] { return files.filter((file) => validator(file.name, file.type)).map((file) => ({ id: `${file.name}-${file.lastModified}-${Math.random()}`, name: file.name, type: file.type || mediaExtension(file.name).toUpperCase(), size: file.size, kind: mediaKind(file.name, file.type), previewUrl: URL.createObjectURL(file), operationId: crypto.randomUUID(), file })); }
+function createMediaAttachments(files: File[], validator = isSupportedMedia): MediaAttachment[] { return files.filter((file) => validator(file.name, file.type)).map((file) => ({ id: `${file.name}-${file.lastModified}-${Math.random()}`, name: file.name, type: file.type || mediaExtension(file.name).toUpperCase(), size: file.size, kind: mediaKind(file.name, file.type), previewUrl: URL.createObjectURL(file), operationId: crypto.randomUUID(), saveAsResource: true, file })); }
 function pageTitle(section: Section) { return { home: "Home", tasks: "Tasks", routines: "Routines", wishlist: "Wishlist", resources: "Resources", account: "Account" }[section]; }
 export default function CasaKeeperApp({ accountEmail, household, householdId, initialTasks, initialRoutines, initialWishlist, initialResources, initialResourceTypes, taskLoadError, routineLoadError, wishlistLoadError, resourceLoadError }: {
     accountEmail?: string;
@@ -349,6 +350,8 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             return "Task deletion is already in progress.";
         taskPendingRef.current[id] = true;
         try {
+            const task = tasks.find((item) => item.id === id);
+            try { if (task) await deleteDirectParentAttachments("task", id, task.media); } catch { return "Unable to delete the task attachments."; }
             const { error } = await createSupabaseBrowserClient().from("tasks").delete().eq("id", id).select("id").single();
             if (error)
                 return "Unable to delete the task.";
@@ -415,6 +418,45 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             throw error;
         }
     };
+    const uploadDirectParentFiles = async (parentType: "task" | "routine", parentId: string, files: MediaAttachment[]) => {
+        const pendingFiles = files.filter((file) => file.file);
+        if (!pendingFiles.length) return [] as MediaAttachment[];
+        if (pendingFiles.length > MAX_RESOURCE_UPLOAD_FILES || pendingFiles.some((file) => (file.file as File).size > MAX_RESOURCE_FILE_BYTES) || pendingFiles.reduce((total, file) => total + (file.file as File).size, 0) > MAX_RESOURCE_UPLOAD_BYTES) throw new Error("Choose no more than 10 files, 50 MiB per file, and 100 MiB total.");
+        const uploaded: MediaAttachment[] = [];
+        const intentIds: string[] = [];
+        try {
+            for (const pending of pendingFiles) {
+                const file = pending.file as File;
+                const authorization = await fetch("/api/attachments/upload-url", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentType, parentId, filename: file.name, fileSize: file.size, mimeType: file.type }) });
+                const authorizationBody = await authorization.json().catch(() => ({}));
+                if (!authorization.ok) throw new Error(authorizationBody.error || "Unable to authorize direct attachment upload.");
+                intentIds.push(authorizationBody.intentId);
+                const upload = await createSupabaseBrowserClient().storage.from(RESOURCE_STORAGE_BUCKET).uploadToSignedUrl(authorizationBody.path, authorizationBody.token, file, { contentType: authorizationBody.mimeType, upsert: false });
+                if (upload.error) throw new Error("Unable to upload the direct attachment.");
+                const finalized = await fetch("/api/attachments/finalize", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentType, parentId, intentId: authorizationBody.intentId }) });
+                const finalizedBody = await finalized.json().catch(() => ({}));
+                if (!finalized.ok || !finalizedBody.attachment) throw new Error(finalizedBody.error || "Unable to finalize the direct attachment.");
+                intentIds.splice(intentIds.indexOf(authorizationBody.intentId), 1);
+                const attachment = finalizedBody.attachment;
+                uploaded.push({ id: attachment.id, name: attachment.original_filename, type: attachment.mime_type, size: attachment.file_size, storagePath: attachment.storage_path, previewUrl: attachment.signedUrl, kind: mediaKind(attachment.original_filename, attachment.mime_type), saveAsResource: false });
+            }
+            return uploaded;
+        }
+        catch (error) {
+            if (intentIds.length) await fetch("/api/attachments/cleanup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intentIds }) }).catch(() => undefined);
+            throw error;
+        }
+    };
+    const removeDirectFiles = async (parentType: "task" | "routine", parentId: string, ids: string[]) => {
+        for (const id of ids) {
+            const response = await fetch(`/api/attachments/${encodeURIComponent(id)}?parentType=${parentType}&parentId=${encodeURIComponent(parentId)}`, { method: "DELETE" });
+            if (!response.ok) throw new Error("Unable to remove direct attachment.");
+        }
+    };
+    const deleteDirectParentAttachments = async (parentType: "task" | "routine", parentId: string, media: MediaAttachment[]) => {
+        const ids = media.filter((file) => !file.resourceLinkId && file.storagePath?.includes(`/${parentType}s/`)).map((file) => file.id);
+        if (ids.length) await removeDirectFiles(parentType, parentId, ids);
+    };
     const removeResourceFiles = async (resourceId: string, ids: string[]) => {
         for (const id of ids) {
             const response = await fetch(`/api/resources/${encodeURIComponent(resourceId)}/attachments/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -424,7 +466,9 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
     };
     const persistParentMedia = async (parentType: "task" | "routine", parentId: string, parentTitle: string, files: MediaAttachment[], previousFiles: MediaAttachment[]) => {
         const pendingFiles = files.filter((file) => file.file);
-        const missingTypeIds = attachmentsMissingResourceType(pendingFiles, new Set(resourceTypes.map((type) => type.id)));
+        const resourcePendingFiles = pendingFiles.filter((file) => file.saveAsResource !== false);
+        const directPendingFiles = pendingFiles.filter((file) => file.saveAsResource === false);
+        const missingTypeIds = attachmentsMissingResourceType(resourcePendingFiles, new Set(resourceTypes.map((type) => type.id)));
         if (missingTypeIds.length) {
             const file = pendingFiles.find((candidate) => candidate.id === missingTypeIds[0]);
             throw new Error(`Choose a Resource Type for ${file?.name || "the attachment"}.`);
@@ -435,8 +479,10 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             if (error)
                 throw new Error("Unable to remove the attachment association.");
         }
+        const removedDirectIds = previousFiles.filter((file) => !file.resourceLinkId && file.storagePath?.includes(`/${parentType}s/`) && !files.some((current) => current.id === file.id)).map((file) => file.id);
+        if (removedDirectIds.length) await removeDirectFiles(parentType, parentId, removedDirectIds);
         const linked = files.filter((file) => !file.file);
-        for (const file of pendingFiles) {
+        for (const file of resourcePendingFiles) {
             const typeId = file.resourceTypeId as string;
             const supabase = createSupabaseBrowserClient();
             const operationId = file.operationId || crypto.randomUUID();
@@ -476,7 +522,8 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
             setResources((items) => items.some((item) => item.id === resource.id) ? items : [{ id: resource.id, title: `${parentTitle} — ${file.name}`, description: `Attachment from ${parentType}.`, resourceTypeId: typeId, resourceTypeName: resourceTypes.find((type) => type.id === typeId)?.name, links: [], notes: [], attachments: [attachment] }, ...items]);
             linked.push({ ...attachment, resourceId: String(resource.id), resourceLinkId: link.id, operationId });
         }
-        return linked;
+        const directUploaded = await uploadDirectParentFiles(parentType, parentId, directPendingFiles);
+        return [...linked, ...directUploaded];
     };
     const persistResource = async (value: FormValue) => {
         if (!householdId)
@@ -616,7 +663,7 @@ export default function CasaKeeperApp({ accountEmail, household, householdId, in
     finally {
         delete routinePendingRef.current[occurrenceKey];
     } };
-    const deleteRoutine = async (id: string): Promise<string | null> => { const { error } = await createSupabaseBrowserClient().from("routines").delete().eq("id", id).select("id").single(); if (error)
+    const deleteRoutine = async (id: string): Promise<string | null> => { const routine = routines.find((item) => item.id === id); try { if (routine) await deleteDirectParentAttachments("routine", id, routine.media); } catch { return "Unable to delete the routine attachments."; } const { error } = await createSupabaseBrowserClient().from("routines").delete().eq("id", id).select("id").single(); if (error)
         return "Unable to delete the routine."; setRoutines((items) => items.filter((routine) => routine.id !== id)); return null; };
     const persistBlocker = async (id: string, text: string) => { const item = tasks.find((task) => task.id === id); if (!item)
         return "This task is no longer available."; const next = [...item.blockers, text]; const { error } = await createSupabaseBrowserClient().from("tasks").update({ blockers: next }).eq("id", id).select("id").single(); if (error)
@@ -1334,9 +1381,10 @@ function LegacyFormModal({ kind, initial, editing, onClose, onSave, onDelete, pr
     const validLinks = value.links.every((link) => !link.trim() || /^https?:\/\/\S+$/i.test(link.trim()));
     useEffect(() => { const handler = (event: Event) => { const detail = (event as CustomEvent<{
         id: string;
-        resourceTypeId: string;
+        resourceTypeId?: string;
+        saveAsResource?: boolean;
     }>).detail; if (!detail?.id)
-        return; setValue((current) => ({ ...current, media: current.media.map((file) => file.id === detail.id ? { ...file, resourceTypeId: detail.resourceTypeId } : file) })); }; document.addEventListener("casakeeper-media-type", handler); return () => document.removeEventListener("casakeeper-media-type", handler); }, []);
+        return; setValue((current) => ({ ...current, media: current.media.map((file) => file.id === detail.id ? { ...file, resourceTypeId: detail.resourceTypeId || file.resourceTypeId, saveAsResource: typeof detail.saveAsResource === "boolean" ? detail.saveAsResource : file.saveAsResource } : file) })); }; document.addEventListener("casakeeper-media-type", handler); return () => document.removeEventListener("casakeeper-media-type", handler); }, []);
     useEffect(() => { const previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = previousOverflow; }; }, []);
     const submit = async (event: FormEvent) => {
         event.preventDefault();
@@ -1463,10 +1511,11 @@ function RepeatableField({ label, values, placeholder, type = "text", error, onA
     const summary = error ? "Check links" : values.length ? `${values.length} ${label.toLowerCase()} ${values.length === 1 ? "item" : "items"}` : "None added";
     return <section className="repeatable-accordion"><button type="button" className="schedule-accordion-trigger" aria-expanded={open} aria-controls={controlId} onClick={() => setActiveSection(toggleAccordion(activeSection, sectionKey))}><span className="schedule-accordion-title">{label}</span><span className={error ? "schedule-accordion-summary field-error" : "schedule-accordion-summary"}>{summary}<ChevronRight size={16} className={open ? "schedule-chevron is-open" : "schedule-chevron"}/></span></button><div id={controlId} className="schedule-accordion-panel" hidden={!open}><div className="field-heading"><span>{values.length ? "Rows" : "Add your first row"}</span><button type="button" className="add-row-button" onClick={() => { setActiveSection(sectionKey); onAdd(); }}><Plus size={14}/> Add row</button></div>{values.map((row, index) => <div className="repeatable-row" key={index}>{label === "Process" && <span className="process-step-number" aria-hidden="true">{index + 1}</span>}<input type={type} value={row} onChange={(event) => onChange(index, event.target.value)} onInvalid={() => setActiveSection(sectionKey)} placeholder={placeholder} aria-label={label + " row " + (index + 1)}/><button type="button" className="icon-button danger-icon" onClick={() => onRemove(index)} aria-label={"Remove " + label + " row " + (index + 1)}><Trash2 size={15}/></button></div>)}{error && <span className="field-error">Use valid HTTP or HTTPS URLs.</span>}</div></section>;
 }
-function MediaField({ files, onAdd, onRemove }: {
+function MediaField({ files, onAdd, onRemove, allowSaveAsResource = false }: {
     files: MediaAttachment[];
     onAdd: (files: File[]) => void;
     onRemove: (id: string) => void;
+    allowSaveAsResource?: boolean;
 }) {
     const { types, required } = useContext(ResourceTypesContext);
     const [dragging, setDragging] = useState(false);
@@ -1507,5 +1556,5 @@ function MediaField({ files, onAdd, onRemove }: {
         const event = new CustomEvent("casakeeper-media-type", { detail: { id, resourceTypeId } });
         document.dispatchEvent(event);
     };
-    return <div className="media-field"><div className="field-heading"><span>Media</span></div><label className={"upload-zone" + (dragging ? " is-dragging" : "")} onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; }} onDrop={onDrop}><Upload size={21}/><span className="upload-title">Drag files here or click to browse.</span><span className="upload-help">Images, videos, PDF, Office files, TXT, and CSV</span><input type="file" accept={supportedMediaAccept} multiple onChange={(event) => { acceptFiles(Array.from(event.target.files || [])); event.target.value = ""; }}/></label>{dropError && <p className="field-error" role="alert">{dropError}</p>}{files.length > 0 && <div className="selected-files">{files.map((file) => { const kind = file.kind || mediaKind(file.name, file.type); const extension = mediaExtension(file.name); const previewImage = kind === "image" && file.previewUrl && extension !== "heic" && extension !== "heif"; return <div className="selected-file" key={file.id}>{previewImage ? <Image src={file.previewUrl as string} alt="" width={64} height={64} unoptimized/> : kind === "video" && file.previewUrl ? <video src={file.previewUrl} controls preload="metadata"/> : <span className="attachment-type-icon"><ExternalLink size={16}/></span>}<span className="attachment-copy"><strong>{file.name}</strong><small>{file.type || extension.toUpperCase()}</small></span>{required && file.file && <label className="attachment-type-select">Resource Type<select required value={file.resourceTypeId || ""} onChange={(event) => updateType(file.id, event.target.value)}><option value="">Select type</option>{types.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>}{file.previewUrl && <a className="attachment-open" href={file.previewUrl} target="_blank" rel="noreferrer" download={file.name}>Open</a>}<button type="button" className="icon-button danger-icon" onClick={() => onRemove(file.id)} aria-label={"Remove " + file.name}><X size={15}/></button></div>; })}</div>}<p className="session-note">{required ? "New Task/Routine files become independent Resources; removing them removes only this association." : "Resource attachments are stored securely and remain available to the household."}</p></div>;
+    return <div className="media-field"><div className="field-heading"><span>Media</span></div><label className={"upload-zone" + (dragging ? " is-dragging" : "")} onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; }} onDrop={onDrop}><Upload size={21}/><span className="upload-title">Drag files here or click to browse.</span><span className="upload-help">Images, videos, PDF, Office files, TXT, and CSV</span><input type="file" accept={supportedMediaAccept} multiple onChange={(event) => { acceptFiles(Array.from(event.target.files || [])); event.target.value = ""; }}/></label>{dropError && <p className="field-error" role="alert">{dropError}</p>}{files.length > 0 && <div className="selected-files">{files.map((file) => { const kind = file.kind || mediaKind(file.name, file.type); const extension = mediaExtension(file.name); const previewImage = kind === "image" && file.previewUrl && extension !== "heic" && extension !== "heif"; return <div className="selected-file" key={file.id}>{previewImage ? <Image src={file.previewUrl as string} alt="" width={64} height={64} unoptimized/> : kind === "video" && file.previewUrl ? <video src={file.previewUrl} controls preload="metadata"/> : <span className="attachment-type-icon"><ExternalLink size={16}/></span>}<span className="attachment-copy"><strong>{file.name}</strong><small>{file.type || extension.toUpperCase()}</small></span>{((allowSaveAsResource || required) && file.file) && <label className="attachment-save-resource"><input type="checkbox" checked={file.saveAsResource !== false} onChange={(event) => document.dispatchEvent(new CustomEvent("casakeeper-media-type", { detail: { id: file.id, saveAsResource: event.target.checked } }))}/><span>Save as Resource</span></label>}{required && file.file && file.saveAsResource !== false && <label className="attachment-type-select">Resource Type<select required value={file.resourceTypeId || ""} onChange={(event) => updateType(file.id, event.target.value)}><option value="">Select type</option>{types.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>}{file.previewUrl && <a className="attachment-open" href={file.previewUrl} target="_blank" rel="noreferrer" download={file.name}>Open</a>}<button type="button" className="icon-button danger-icon" onClick={() => onRemove(file.id)} aria-label={"Remove " + file.name}><X size={15}/></button></div>; })}</div>}<p className="session-note">{required ? "New Task/Routine files become independent Resources; removing them removes only this association." : "Resource attachments are stored securely and remain available to the household."}</p></div>;
 }

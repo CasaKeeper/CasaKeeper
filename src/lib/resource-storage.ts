@@ -55,5 +55,9 @@ export function safeResourceFilename(name: string): string | null {
 }
 
 export function resourceStoragePath(householdId: string, resourceId: string, attachmentId: string, filename: string) {
-  return `${householdId}/resources/${resourceId}/${attachmentId}/${filename}`;
+  return parentAttachmentStoragePath(householdId, "resource", resourceId, attachmentId, filename);
+}
+
+export function parentAttachmentStoragePath(householdId: string, parentType: "task" | "routine" | "resource", parentId: string, attachmentId: string, filename: string) {
+  return `${householdId}/${parentType}s/${parentId}/${attachmentId}/${filename}`;
 }
